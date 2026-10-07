@@ -31,5 +31,8 @@ Schema changes: `npx supabase db push` against the linked project.
 ## Security model
 
 - Entra app is single-tenant (inogen.ai only).
+- Email/password and phone sign-ups are off (`supabase/config.toml`; on the hosted project: Authentication → Providers → Email: disabled, or `npx supabase config push`).
+- RLS also requires `app_metadata.provider = 'azure'`, so only Microsoft sign-ins get data.
+- Deletes are soft (`deleted_at`): realtime does not apply RLS to DELETE events.
 - RLS on `public.roles` admits only JWTs whose email domain is exactly `inogen.ai`.
 - `seed/` and `.env` are git-ignored: exported roles contain recruiter contact details.

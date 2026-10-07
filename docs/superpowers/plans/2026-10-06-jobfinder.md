@@ -2500,7 +2500,8 @@ Expected: the migration is applied. In the dashboard, Table Editor → `roles` s
    - the client id;
    - the secret;
    - Azure Tenant URL `https://login.microsoftonline.com/<tenant-id>`.
-7. In Authentication → URL Configuration, set Site URL to `https://jobfinder.inogen.ai`. Add `http://localhost:5173` to the redirect URLs.
+7. In Authentication → Providers → Email, **disable** the Email provider (and leave Phone off). Only Microsoft sign-ins are allowed.
+8. In Authentication → URL Configuration, set Site URL to `https://jobfinder.inogen.ai`. Add `http://localhost:5173` to the redirect URLs.
 
 - [ ] **Step 3: Create the GitHub repo and push (Claude, after Mike says yes)**
 
