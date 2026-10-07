@@ -1,19 +1,24 @@
-import { describe, it, expect, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { describe, it, expect, vi } from 'vitest'
 import {
   rowToRole, patchToRow, roleInputToRow, newRoleId, applyChange, toRoleError, errorMessage,
   createRolesApi, RoleError, type RoleRow,
 } from './roles'
+import { fakeSb } from '../test/fakeSupabase'
 
 const row: RoleRow = {
   id: 'nl-x', title: 'AI Engineer', org: 'Interex', market: 'NL', location: 'Den Haag', remote: '', rate: '',
   ir35: '', duration: '', posted: '2026-09-18', deadline: '2026-10-18', next_date: null, fit: 'Strong',
   status: 'Shortlist', why: 'RAG', caveat: '', url: 'https://x', contact: '', next_step: 'Send CV', notes: '',
-  cv: 'A', created_at: '2026-10-06T10:00:00Z', updated_at: '2026-10-06T11:00:00Z',
+  cv: 'A', job_description: 'Build RAG', created_at: '2026-10-06T10:00:00Z', updated_at: '2026-10-06T11:00:00Z',
   created_by: 'claude-script', updated_by: 'michael.snow@inogen.ai', deleted_at: null,
 }
 
 describe('mapping', () => {
+  it('maps the job description both ways', () => {
+    expect(rowToRole(row).jobDescription).toBe('Build RAG')
+    expect(patchToRow({ jobDescription: 'New JD' })).toEqual({ job_description: 'New JD' })
+  })
   it('rowToRole camel-cases', () => {
     const r = rowToRole(row)
     expect(r.nextStep).toBe('Send CV')
@@ -62,19 +67,6 @@ describe('toRoleError', () => {
     expect(errorMessage(new RoleError('x', 'network'))).toBe("Couldn't save. Check your connection and try again.")
   })
 })
-
-/** Chainable fake of supabase.from(...): every method returns the builder; awaiting it yields `result`. */
-function fakeSb(result: { data: unknown; error: unknown }) {
-  const calls: Array<[string, unknown[]]> = []
-  const builder: unknown = new Proxy({}, {
-    get(_t, prop) {
-      if (prop === 'then') return (resolve: (v: unknown) => void) => resolve(result)
-      return (...args: unknown[]) => { calls.push([String(prop), args]); return builder }
-    },
-  })
-  const client = { from: (t: string) => { calls.push(['from', [t]]); return builder } } as unknown as SupabaseClient
-  return { client, calls }
-}
 
 describe('createRolesApi', () => {
   it('list asks only for rows that are not soft-deleted', async () => {

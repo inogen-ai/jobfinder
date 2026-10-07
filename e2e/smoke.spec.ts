@@ -10,7 +10,7 @@ const session = {
 const row = {
   id: 'nl-x', title: 'AI Engineer', org: 'Interex', market: 'NL', location: 'Den Haag', remote: '', rate: '', ir35: '',
   duration: '', posted: '2026-09-18', deadline: null, next_date: null, fit: 'Strong', status: 'Shortlist', why: '',
-  caveat: '', url: '', contact: '', next_step: '', notes: '', cv: 'A', created_at: '2026-10-06T10:00:00Z',
+  caveat: '', url: '', contact: '', next_step: '', notes: '', cv: 'A', job_description: '', created_at: '2026-10-06T10:00:00Z',
   updated_at: '2026-10-06T10:00:00Z', created_by: 'claude-script', updated_by: 'claude-script',
 }
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 COLUMNS = {
     "id", "title", "org", "market", "location", "remote", "rate", "ir35", "duration", "posted", "deadline",
-    "next_date", "fit", "status", "why", "caveat", "url", "contact", "next_step", "notes", "cv",
+    "next_date", "fit", "status", "why", "caveat", "url", "contact", "next_step", "notes", "cv", "job_description",
 }
 DATE_COLUMNS = {"posted", "deadline", "next_date"}
 MARKETS = {"UK", "NL", "EU", "Global"}

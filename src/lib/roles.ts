@@ -5,7 +5,7 @@ export interface RoleRow {
   id: string; title: string; org: string; market: string; location: string; remote: string; rate: string
   ir35: string; duration: string; posted: string | null; deadline: string | null; next_date: string | null
   fit: string; status: string; why: string; caveat: string; url: string; contact: string; next_step: string
-  notes: string; cv: string; created_at: string; updated_at: string; created_by: string | null; updated_by: string | null
+  notes: string; cv: string; job_description: string; created_at: string; updated_at: string; created_by: string | null; updated_by: string | null
   deleted_at?: string | null
 }
 
@@ -18,7 +18,7 @@ const KEY_MAP: Record<keyof RolePatch, keyof RoleRow> = {
   title: 'title', org: 'org', market: 'market', location: 'location', remote: 'remote', rate: 'rate',
   ir35: 'ir35', duration: 'duration', posted: 'posted', deadline: 'deadline', nextDate: 'next_date',
   fit: 'fit', status: 'status', why: 'why', caveat: 'caveat', url: 'url', contact: 'contact',
-  nextStep: 'next_step', notes: 'notes', cv: 'cv',
+  nextStep: 'next_step', notes: 'notes', cv: 'cv', jobDescription: 'job_description',
 }
 const DATE_COLUMNS = new Set<keyof RoleRow>(['posted', 'deadline', 'next_date'])
 
@@ -27,7 +27,7 @@ export function rowToRole(r: RoleRow): Role {
     id: r.id, title: r.title, org: r.org, market: r.market as Market, location: r.location, remote: r.remote,
     rate: r.rate, ir35: r.ir35, duration: r.duration, posted: r.posted, deadline: r.deadline, nextDate: r.next_date,
     fit: r.fit as Fit, status: r.status as Status, why: r.why, caveat: r.caveat, url: r.url, contact: r.contact,
-    nextStep: r.next_step, notes: r.notes, cv: r.cv as CvVersion, createdAt: r.created_at, updatedAt: r.updated_at,
+    nextStep: r.next_step, notes: r.notes, cv: r.cv as CvVersion, jobDescription: r.job_description ?? '', createdAt: r.created_at, updatedAt: r.updated_at,
     createdBy: r.created_by, updatedBy: r.updated_by,
   }
 }

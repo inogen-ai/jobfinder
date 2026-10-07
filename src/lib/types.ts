@@ -35,6 +35,7 @@ export interface Role {
   nextStep: string
   notes: string
   cv: CvVersion
+  jobDescription: string
   createdAt: string
   updatedAt: string
   createdBy: string | null

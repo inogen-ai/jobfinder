@@ -23,7 +23,7 @@ export function AddRoleDialog({ onCreate, onClose }: {
       id: newRoleId(v.market, org, title), title, org, market: v.market as Market, fit: v.fit as Fit, status: 'Shortlist',
       location: v.location ?? '', remote: v.remote ?? '', rate: v.rate ?? '', ir35: v.ir35 ?? '', duration: '',
       posted: v.posted || null, deadline: v.deadline || null, nextDate: null, why: v.why ?? '', caveat: '',
-      url: v.url ?? '', contact: '', nextStep: '', notes: '', cv: '',
+      url: v.url ?? '', contact: '', nextStep: '', notes: '', cv: '', jobDescription: '',
     })
     if (err) setMsg(err)
   }
