@@ -58,6 +58,7 @@ describe('toRoleError', () => {
     [{ code: 'PGRST116', message: '0 rows' }, 'missing'],
     [{ code: '42501', message: 'row-level security' }, 'auth'],
     [{ code: 'PGRST301', message: 'JWT expired' }, 'auth'],
+    [{ code: 'PGRST303', message: 'JWT expired' }, 'auth'],
     [{ status: 401, message: 'unauthorised' }, 'auth'],
     [new TypeError('Failed to fetch'), 'network'],
     [{ code: '23505', message: 'duplicate' }, 'other'],
@@ -95,6 +96,40 @@ describe('createRolesApi', () => {
   it('update of a deleted role throws missing', async () => {
     const { client } = fakeSb({ data: null, error: { code: 'PGRST116', message: '0 rows' } })
     await expect(createRolesApi(client).update('gone', { notes: 'x' })).rejects.toMatchObject({ kind: 'missing' })
+  })
+  it('reconnects with backoff after a channel error and ignores the old channel', () => {
+    vi.useFakeTimers()
+    try {
+      const made: Array<(s: string) => void> = []
+      const client = {
+        channel: () => { const ch: Record<string, unknown> = {}; ch.on = () => ch; ch.subscribe = (cb: (s: string) => void) => { made.push(cb); return ch }; return ch },
+        removeChannel: vi.fn(),
+      } as unknown as SupabaseClient
+      const onStatus = vi.fn()
+      const unsub = createRolesApi(client).subscribe(vi.fn(), onStatus)
+      made[0]('CHANNEL_ERROR')
+      expect(onStatus).toHaveBeenLastCalledWith('paused')
+      expect(made.length).toBe(1)
+      vi.advanceTimersByTime(1000)
+      expect(made.length).toBe(2)
+      made[1]('SUBSCRIBED')
+      expect(onStatus).toHaveBeenLastCalledWith('live')
+      made[0]('CLOSED')
+      vi.advanceTimersByTime(60_000)
+      expect(made.length).toBe(2)
+      expect(onStatus).toHaveBeenLastCalledWith('live')
+      made[1]('TIMED_OUT')
+      vi.advanceTimersByTime(999)
+      expect(made.length).toBe(2)
+      vi.advanceTimersByTime(1)
+      expect(made.length).toBe(3)
+      unsub()
+      made[2]('CHANNEL_ERROR')
+      vi.advanceTimersByTime(60_000)
+      expect(made.length).toBe(3)
+    } finally {
+      vi.useRealTimers()
+    }
   })
   it('subscribe maps realtime events and status', () => {
     let handler: (p: unknown) => void = () => {}

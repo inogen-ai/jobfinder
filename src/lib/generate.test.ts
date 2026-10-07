@@ -53,9 +53,13 @@ describe('generate', () => {
     const e2 = await client(r409 as unknown as typeof fetch).generate({ roleId: 'r1', kind: 'cv' }, { onDelta: () => {}, onReset: () => {} }).catch((x) => x)
     expect(generateErrorMessage(e2)).toBe('Add your CV to your profile first.')
   })
-  it('a stream that ends without done is a network error; an abort is stopped', async () => {
+  it('a stream that drops after text is "stopped"; before any text it is a network error', async () => {
     const cut = async () => streamResponse([enc.encode(sse(['delta', { text: 'a' }]))])
-    await expect(client(cut as unknown as typeof fetch).generate({ roleId: 'r1', kind: 'cv' }, { onDelta: () => {}, onReset: () => {} })).rejects.toMatchObject({ code: 'network' })
+    await expect(client(cut as unknown as typeof fetch).generate({ roleId: 'r1', kind: 'cv' }, { onDelta: () => {}, onReset: () => {} })).rejects.toMatchObject({ code: 'stopped' })
+    const empty = async () => streamResponse([])
+    await expect(client(empty as unknown as typeof fetch).generate({ roleId: 'r1', kind: 'cv' }, { onDelta: () => {}, onReset: () => {} })).rejects.toMatchObject({ code: 'network' })
+  })
+  it('an abort is stopped', async () => {
     const ctrl = new AbortController(); ctrl.abort()
     const aborted = async () => { throw new DOMException('aborted', 'AbortError') }
     const e = await client(aborted as unknown as typeof fetch).generate({ roleId: 'r1', kind: 'cv' }, { onDelta: () => {}, onReset: () => {}, signal: ctrl.signal }).catch((x) => x)

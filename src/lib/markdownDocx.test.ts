@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseMarkdown, parseInline, markdownToDocx, docxFilename } from './markdownDocx'
+import { parseMarkdown, parseInline, markdownToDocx, docxFilename, listInstances, safeHref } from './markdownDocx'
 
 describe('parseMarkdown', () => {
   it('reads headings, paragraphs, bullet and numbered lists', () => {
@@ -9,6 +9,25 @@ describe('parseMarkdown', () => {
   })
   it('treats a Subject line as a paragraph', () => {
     expect(parseMarkdown('Subject: AI Engineer')[0].type).toBe('paragraph')
+  })
+})
+
+describe('edge cases', () => {
+  it('leaves snake_case words alone', () => {
+    expect(parseInline('big_data_eng and _real_ italics')).toEqual([{ text: 'big_data_eng and ' }, { text: 'real', italic: true }, { text: ' italics' }])
+  })
+  it('supports headings down to level 6', () => {
+    expect(parseMarkdown('#### Four\n###### Six').map((b) => b.type === 'heading' && b.level)).toEqual([4, 6])
+  })
+  it('restarts numbering for each separate numbered list', () => {
+    const blocks = parseMarkdown('1. a\n2. b\n\nText\n\n1. c')
+    expect(listInstances(blocks).filter((n) => n !== null)).toEqual([1, 1, 2])
+  })
+  it('only allows web and mail links', () => {
+    expect(safeHref('https://x.ai')).toBe('https://x.ai')
+    expect(safeHref('mailto:a@b.c')).toBe('mailto:a@b.c')
+    expect(safeHref('javascript:alert(1)')).toBeNull()
+    expect(safeHref('data:text/html,x')).toBeNull()
   })
 })
 

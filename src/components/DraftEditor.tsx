@@ -1,9 +1,9 @@
 import { useState, type ReactElement } from 'react'
-import { docxFilename, markdownToDocx, parseMarkdown, saveBlob, type Inline } from '../lib/markdownDocx'
+import { docxFilename, markdownToDocx, parseMarkdown, safeHref, saveBlob, type Inline } from '../lib/markdownDocx'
 
 function renderInlines(inlines: Inline[]) {
-  return inlines.map((i, k) => i.link
-    ? <a key={k} href={i.link} target="_blank" rel="noopener noreferrer">{i.text}</a>
+  return inlines.map((i, k) => i.link && safeHref(i.link)
+    ? <a key={k} href={safeHref(i.link)!} target="_blank" rel="noopener noreferrer">{i.text}</a>
     : i.bold ? <strong key={k}>{i.text}</strong> : i.italic ? <em key={k}>{i.text}</em> : <span key={k}>{i.text}</span>)
 }
 
@@ -27,7 +27,7 @@ function Preview({ markdown }: { markdown: string }) {
     }
     flush()
     if (b.type === 'heading') {
-      const H = (`h${b.level + 2}`) as 'h3' | 'h4' | 'h5'
+      const H = (`h${Math.min(b.level + 2, 6)}`) as 'h3' | 'h4' | 'h5' | 'h6'
       out.push(<H key={out.length}>{renderInlines(b.inlines)}</H>)
     } else out.push(<p key={out.length}>{renderInlines(b.inlines)}</p>)
   }

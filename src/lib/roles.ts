@@ -78,7 +78,7 @@ export function toRoleError(e: unknown): RoleError {
   const { code, message, status } = (e ?? {}) as { code?: string; message?: string; status?: number }
   const msg = message ?? String(e)
   if (code === 'PGRST116') return new RoleError(msg, 'missing')
-  if (code === '42501' || code === 'PGRST301' || status === 401 || status === 403) return new RoleError(msg, 'auth')
+  if (code === '42501' || code?.startsWith('PGRST30') || status === 401 || status === 403) return new RoleError(msg, 'auth')
   if (/failed to fetch|networkerror|load failed/i.test(msg)) return new RoleError(msg, 'network')
   return new RoleError(msg, 'other')
 }
@@ -120,18 +120,45 @@ export function createRolesApi(sb: SupabaseClient): RolesApi {
       if (error) throw toRoleError(error)
     },
     subscribe(onChange, onStatus) {
-      const channel = sb
-        .channel('roles-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'roles' }, (payload: {
-          eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: unknown; old: unknown
-        }) => {
-          const next = payload.new as RoleRow
-          if (payload.eventType === 'DELETE') onChange({ type: 'delete', id: (payload.old as { id: string }).id })
-          else if (next.deleted_at) onChange({ type: 'delete', id: next.id })
-          else onChange({ type: 'upsert', role: rowToRole(next) })
-        })
-        .subscribe((status: string) => onStatus(status === 'SUBSCRIBED' ? 'live' : 'paused'))
-      return () => { void sb.removeChannel(channel) }
+      let stopped = false
+      let generation = 0
+      let attempt = 0
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let channel: ReturnType<SupabaseClient['channel']>
+      const connect = () => {
+        const mine = ++generation
+        channel = sb
+          .channel('roles-changes')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'roles' }, (payload: {
+            eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: unknown; old: unknown
+          }) => {
+            const next = payload.new as RoleRow
+            if (payload.eventType === 'DELETE') onChange({ type: 'delete', id: (payload.old as { id: string }).id })
+            else if (next.deleted_at) onChange({ type: 'delete', id: next.id })
+            else onChange({ type: 'upsert', role: rowToRole(next) })
+          })
+          .subscribe((status: string) => {
+            if (stopped || mine !== generation) return // late events from a replaced channel
+            if (status === 'SUBSCRIBED') { attempt = 0; onStatus('live'); return }
+            onStatus('paused')
+            if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') && !timer) {
+              const delay = Math.min(30_000, 1000 * 2 ** attempt++)
+              timer = setTimeout(() => {
+                timer = undefined
+                if (stopped) return
+                const old = channel
+                connect() // bumps generation first, so the old channel's CLOSED is ignored
+                void sb.removeChannel(old)
+              }, delay)
+            }
+          })
+      }
+      connect()
+      return () => {
+        stopped = true
+        if (timer) clearTimeout(timer)
+        void sb.removeChannel(channel)
+      }
     },
   }
 }

@@ -29,7 +29,7 @@ Each user keeps a private profile ("My profile"). From an open role, the Documen
 Claude Opus 5.5 through two Supabase Edge Functions: `generate` (streams a draft and saves it) and
 `fetch-posting` (pulls the job description from the role's link). Drafts are private to their author.
 
-    npm run test:functions                                  # Deno tests for the functions
+    npm run test:functions                                  # Deno tests (fetches pinned Deno 2.9.6 on demand)
     npx supabase functions serve --env-file supabase/.env.functions   # local; file holds ANTHROPIC_API_KEY, git-ignored
 
 Deploy:

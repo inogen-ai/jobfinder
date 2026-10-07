@@ -65,7 +65,9 @@ export function createGenerateClient(opts: {
 
   return {
     async generate(p, h) {
-      const failure = () => new GenerateError(h.signal?.aborted ? 'stopped' : 'network')
+      let sawText = false
+      // Stopped by the user, or cut off after some text arrived: "stopped early" (partial text is kept).
+      const failure = () => new GenerateError(h.signal?.aborted || sawText ? 'stopped' : 'network')
       let res: Response
       try {
         res = await doFetch(`${opts.functionsUrl}/generate`, { method: 'POST', headers: await headers(), body: JSON.stringify(p), signal: h.signal })
@@ -79,7 +81,7 @@ export function createGenerateClient(opts: {
           if (done) break
           for (const ev of parser.push(value)) {
             const data = ev.data ? JSON.parse(ev.data) : {}
-            if (ev.event === 'delta') h.onDelta(data.text ?? '')
+            if (ev.event === 'delta') { sawText = true; h.onDelta(data.text ?? '') }
             else if (ev.event === 'reset') h.onReset()
             else if (ev.event === 'done') return data as GenerateResult
             else if (ev.event === 'error') throw new GenerateError(data.code ?? 'upstream')
