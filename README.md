@@ -1,32 +1,35 @@
-# React + TypeScript + Vite
+# jobfinder.inogen.ai
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Shared tracker for freelance roles, for InoGen accounts only. Static React app on GitHub Pages,
+backed by Supabase (Postgres + Microsoft sign-in + realtime). Design: `docs/superpowers/specs/2026-10-06-jobfinder-design.md`.
 
-Currently, two official plugins are available:
+## Develop
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+    npm install
+    cp .env.example .env.local      # fill VITE_* values
+    npm run dev
+    npm test && npm run lint && npm run typecheck
+    npm run e2e
 
-## React Compiler
+Database (needs Docker):
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+    npx supabase start
+    npx supabase db reset               # applies supabase/migrations
+    npx supabase test db                # RLS tests
 
-## Expanding the Oxlint configuration
+## Add a role from the command line
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+Needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env` (never commit it; the key bypasses RLS).
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+    uv run scripts/add_role.py --title "AI Engineer" --org "Acme" --market NL --fit Strong --url https://...
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Deploy
+
+Every push to `main` runs CI and deploys to Pages. Repo variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+Schema changes: `npx supabase db push` against the linked project.
+
+## Security model
+
+- Entra app is single-tenant (inogen.ai only).
+- RLS on `public.roles` admits only JWTs whose email domain is exactly `inogen.ai`.
+- `seed/` and `.env` are git-ignored: exported roles contain recruiter contact details.
