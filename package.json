@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
+    "docx": "^9.9.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
