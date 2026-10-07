@@ -191,3 +191,70 @@ textarea.cv { min-height: 320px; font-family: var(--f-mono); font-size: 13px; }
 .docs .msg { font-size: 13px; color: var(--muted); }
 .hint { margin: 0; font-size: 12.5px; color: var(--muted); }
 .hint.over { color: var(--bad); }
+
+/* ---------- Touch and phones ---------- */
+.countdown .short, .fab { display: none; }
+html { -webkit-text-size-adjust: 100%; }
+
+/* Finger-sized controls, and 16px text in fields so iPhone Safari never zooms on focus. */
+@media (max-width: 640px), (pointer: coarse) {
+  .btn, .seg button, .stage, .tabs button, .draft-list button, .pill { min-height: 44px; }
+  input, select, textarea, .pill, .form input, .form select, .form textarea, .docs input, .docs textarea, .draft-text, textarea.cv { font-size: 16px; }
+  /* Single-line fields get a finger-sized height; text areas keep their own, taller heights. */
+  input, select, .pill, .form input, .form select, .docs input { min-height: 44px; }
+  .toolbar input[type="search"] { min-height: 44px; }
+}
+
+@media (max-width: 640px) {
+  .wrap { padding-block: 14px 104px; gap: 14px; }
+
+  /* Compact header: title, countdown and account on two short lines; intro hidden. */
+  header.top { flex-wrap: nowrap; align-items: center; gap: 10px; }
+  header.top h1 { font-size: 24px; }
+  header.top .sub { display: none; }
+  .top-side { justify-items: end; gap: 6px; }
+  .countdown { padding: 4px 10px; gap: 6px; align-items: center; }
+  .countdown b { font-size: 20px; }
+  .countdown .long { display: none; }
+  .countdown .short { display: inline; font-size: 12px; }
+  .userbar .muted { display: none; }
+  .userbar { gap: 6px; }
+  .userbar .btn { padding: 0 10px; font-size: 13px; white-space: nowrap; }
+
+  /* Stage tiles and filters become single swipeable chip rows. */
+  .stages { display: flex; overflow-x: auto; gap: 6px; background: none; border: 0; border-radius: 0; scrollbar-width: none; scroll-snap-type: x proximity; }
+  .stages::-webkit-scrollbar, .seg::-webkit-scrollbar { display: none; }
+  .stage, .stage:first-child { grid-column: auto; flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; scroll-snap-align: start; }
+  .stage .n { font-size: 16px; }
+  .stage .l { font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; }
+  .toolbar { gap: 8px; }
+  .seg { display: flex; width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .seg button { flex: 1 0 auto; }
+  .toolbar input[type="search"] { flex-basis: 100%; }
+  .toolbar .btn.primary { display: none; }
+
+  .fab {
+    display: block; position: fixed; z-index: 20;
+    right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    border-radius: 999px; padding: 0 22px; box-shadow: 0 6px 20px rgb(10 12 18 / 0.25);
+  }
+
+  /* An open role keeps its title and status pinned while you scroll its details; tap to close. */
+  .ledger { overflow: clip; }
+  .row.open .row-head {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    background: var(--surface); box-shadow: 0 1px 0 var(--line), 0 6px 12px rgb(10 12 18 / 0.08);
+  }
+  /* Terms and dates are repeated in the open details, so the pinned header keeps just title, status and fit. */
+  .row.open .row-head > .c-terms, .row.open .row-head > .c-when { display: none; }
+
+  /* Add-role dialog: full-screen sheet with the title and actions pinned. */
+  .backdrop { padding: 0; place-items: stretch; }
+  .modal { width: 100%; max-height: none; height: 100%; border-radius: 0; border: 0; padding: 0; }
+  .modal h2 { position: sticky; top: 0; z-index: 2; margin: 0; padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 12px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .modal .form { padding: 12px 16px 0; }
+  .modal .actions {
+    position: sticky; bottom: 0; z-index: 2; margin: 0 -16px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface); border-top: 1px solid var(--line);
+  }
+}

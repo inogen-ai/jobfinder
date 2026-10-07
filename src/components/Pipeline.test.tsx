@@ -132,7 +132,8 @@ describe('Pipeline', () => {
     const { api } = fakeApi([])
     render(<Pipeline api={api} {...props} />)
     await screen.findByText('No roles yet.')
-    await userEvent.click(screen.getByRole('button', { name: 'Add role' }))
+    // The toolbar button and the phone-only floating button share the label; CSS shows one at a time.
+    await userEvent.click(screen.getAllByRole('button', { name: 'Add role' })[0])
     const dialog = screen.getByRole('dialog')
     await userEvent.type(within(dialog).getByLabelText('Role title'), 'ML Engineer')
     await userEvent.type(within(dialog).getByLabelText('Company or agency'), 'Acme')

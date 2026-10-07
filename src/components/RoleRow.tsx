@@ -17,7 +17,7 @@ export function RoleRow({ role, open, now, onToggle, onStatus, children, docCoun
           <div className="role-t">{role.title}</div>
           <div className="role-o">
             {role.org}
-            {docCount ? <span className="docs-badge">{docCount} docs</span> : null}
+            {docCount ? <span className="docs-badge">{docCount} {docCount === 1 ? 'doc' : 'docs'}</span> : null}
             {role.nextStep && <> · <span className="next">Next: {role.nextStep}{role.nextDate ? ` (${formatDay(role.nextDate)})` : ''}</span></>}
           </div>
         </div>

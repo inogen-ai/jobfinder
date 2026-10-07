@@ -166,7 +166,7 @@ export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp,
           <p className="sub">Remote freelance roles across the UK, the Netherlands and wider Europe. Open a row to update its status, next step and notes.</p>
         </div>
         <div className="top-side">
-          <div className="countdown"><b className="mono">{contractCountdown(now)}</b><span>days until the current<br />contract ends (31 Oct)</span></div>
+          <div className="countdown"><b className="mono">{contractCountdown(now)}</b><span className="long">days until the current<br />contract ends (31 Oct)</span><span className="short">days to 31 Oct</span></div>
           <div className="userbar"><span className="muted">{userEmail}</span>{docs && <button className="btn" onClick={docs.onOpenProfile}>My profile</button>}<button className="btn" onClick={onSignOut}>Sign out</button></div>
         </div>
       </header>
@@ -178,6 +178,8 @@ export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp,
         <div>{body}</div>
       </div>
       {notice && <p className="notice" role="alert">{notice}</p>}
+      {/* Phones: a floating Add button replaces the toolbar one, so it's reachable from anywhere in the list. */}
+      {!adding && <button className="btn primary fab" onClick={() => setAdding(true)}>Add role</button>}
       {adding && <AddRoleDialog onCreate={create} onClose={() => setAdding(false)} />}
     </main>
   )
