@@ -30,6 +30,16 @@ describe('JobDescription', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Fetch from link' }))
     expect(await screen.findByText("This site doesn't allow fetching — paste the job description instead.")).toBeInTheDocument()
   })
+  it('follows a colleague\'s update when there are no local edits, and warns when there are', async () => {
+    const c = client({ unavailable: true })
+    const { rerender } = render(<JobDescription role={makeRole({ jobDescription: 'v1' })} client={c} onSave={vi.fn()} />)
+    rerender(<JobDescription role={makeRole({ jobDescription: 'v2 from Herman' })} client={c} onSave={vi.fn()} />)
+    expect(screen.getByLabelText('Job description')).toHaveValue('v2 from Herman')
+    await userEvent.type(screen.getByLabelText('Job description'), ' + mine')
+    rerender(<JobDescription role={makeRole({ jobDescription: 'v3' })} client={c} onSave={vi.fn()} />)
+    expect(screen.getByLabelText('Job description')).toHaveValue('v2 from Herman + mine')
+    expect(screen.getByText('A colleague updated this description. Saving will replace their version.')).toBeInTheDocument()
+  })
   it('saves pasted text', async () => {
     const onSave = vi.fn(async () => null)
     render(<JobDescription role={makeRole()} client={client({ unavailable: true })} onSave={onSave} />)

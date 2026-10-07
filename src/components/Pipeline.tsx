@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Role, Status } from '../lib/types'
 import {
   applyChange, errorMessage, toRoleError, type LiveStatus, type RoleInput, type RolePatch, type RolesApi,
@@ -15,8 +15,15 @@ import { DocumentsPanel, type DocsContext } from './DocumentsPanel'
 export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp, docs }: {
   api: RolesApi; userEmail: string; onSignOut: () => void; onAuthError: () => void; now?: Date; docs?: DocsContext
 }) {
-  // One clock per mount, so memoised sorting isn't recomputed on every render.
-  const [now] = useState(() => nowProp ?? new Date())
+  // A clock that ticks once a minute: countdown, deadline badges and "updated 2h ago" stay current
+  // without recomputing the sort on every render.
+  const [now, setNow] = useState(() => nowProp ?? new Date())
+  useEffect(() => {
+    if (nowProp) return
+    const timer = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(timer)
+  }, [nowProp])
+  const statusSeq = useRef(new Map<string, number>())
   const [roles, setRoles] = useState<Role[]>([])
   const [loaded, setLoaded] = useState(false)
   const [loadError, setLoadError] = useState('')
@@ -29,7 +36,9 @@ export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp,
 
   useEffect(() => {
     if (!docs) return
-    docs.api.countByRole().then(setDocCounts).catch(() => {})
+    const refresh = () => { docs.api.countByRole().then(setDocCounts).catch(() => {}) }
+    refresh()
+    return docs.runs.onDone(refresh) // drafts finished in the background still update the badge
   }, [docs])
 
   const fail = useCallback((e: unknown): string => {
@@ -75,14 +84,20 @@ export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp,
   async function changeStatus(id: string, status: Status) {
     const before = roles.find((r) => r.id === id)
     if (!before) return
+    // Only the newest change for a role may apply its result or roll back.
+    const seq = (statusSeq.current.get(id) ?? 0) + 1
+    statusSeq.current.set(id, seq)
+    const latest = () => statusSeq.current.get(id) === seq
     setRoles((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)))
     try {
       const saved = await api.update(id, { status })
-      setRoles((rs) => applyChange(rs, { type: 'upsert', role: saved }))
+      if (latest()) setRoles((rs) => applyChange(rs, { type: 'upsert', role: saved }))
       setNotice('')
     } catch (e) {
-      setRoles((rs) => rs.map((r) => (r.id === id ? { ...r, status: before.status } : r)))
-      setNotice(fail(e))
+      const err = toRoleError(e)
+      if (err.kind === 'missing') setRoles((rs) => applyChange(rs, { type: 'delete', id }))
+      else if (latest()) setRoles((rs) => rs.map((r) => (r.id === id ? { ...r, status: before.status } : r)))
+      setNotice(fail(err))
     }
   }
 

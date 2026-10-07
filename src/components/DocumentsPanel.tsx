@@ -1,13 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Role } from '../lib/types'
 import { DOC_KIND_LABEL, type Doc, type DocKind, type DocumentsApi } from '../lib/documents'
 import { GenerateError, generateErrorMessage, type GenerateClient } from '../lib/generate'
+import type { RunStore } from '../lib/runStore'
 import { errorMessage, toRoleError } from '../lib/roles'
 import { JobDescription } from './JobDescription'
 import { GenerateButtons } from './GenerateButtons'
 import { DraftEditor } from './DraftEditor'
 
-export interface DocsContext { api: DocumentsApi; client: GenerateClient; profileReady: boolean; onOpenProfile: () => void; onAuthError?: () => void }
+export interface DocsContext {
+  api: DocumentsApi
+  client: GenerateClient
+  /** Generations in progress; they outlive this panel so closing a role never loses a draft. */
+  runs: RunStore
+  profileReady: boolean
+  onOpenProfile: () => void
+  onAuthError?: () => void
+}
 
 export function DocumentsPanel({ role, ctx, onSaveJobDescription, onCountChange }: {
   role: Role; ctx: DocsContext
@@ -16,61 +25,69 @@ export function DocumentsPanel({ role, ctx, onSaveJobDescription, onCountChange 
 }) {
   const [docs, setDocs] = useState<Doc[]>([])
   const [selected, setSelected] = useState<string | null>(null)
-  const [live, setLive] = useState<{ kind: DocKind; text: string } | null>(null)
-  const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [loaded, setLoaded] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
   const flushJd = useRef<(() => Promise<string | null>) | null>(null)
   const countRef = useRef(onCountChange)
   useEffect(() => { countRef.current = onCountChange })
 
+  const run = useSyncExternalStore(ctx.runs.subscribe, () => ctx.runs.get(role.id))
+  const busy = run?.busy ?? false
+  // A run is shown while it streams, or after it failed with text worth keeping.
+  const live = run && (run.busy || (run.outcome === 'failed' && run.text)) ? run : null
+  const runNotice = run?.outcome === 'failed' && run.error ? generateErrorMessage(run.error) : ''
+
   useEffect(() => {
     let on = true
     ctx.api.list(role.id)
-      .then((d) => { if (on) { setDocs(d); setSelected(d[0]?.id ?? null); setLoaded(true) } })
+      .then((d) => {
+        if (!on) return
+        setDocs(d); setSelected(d[0]?.id ?? null); setLoaded(true)
+        // A run that finished while the panel was closed is already in the list.
+        if (ctx.runs.get(role.id)?.outcome === 'done') ctx.runs.clear(role.id)
+      })
       .catch(() => { if (on) setNotice("Couldn't load your drafts.") })
-    return () => { on = false; abortRef.current?.abort() }
-  }, [ctx.api, role.id])
+    return () => { on = false }
+  }, [ctx.api, ctx.runs, role.id])
 
   // The badge follows the list; every change below goes through a functional update, so no stale copies.
   useEffect(() => { if (loaded) countRef.current(role.id, docs.length) }, [loaded, docs.length, role.id])
 
-  async function run(kind: DocKind, opts: { instruction?: string; questions?: string; previousDocumentId?: string | null }) {
+  async function start(kind: DocKind, opts: { instruction?: string; questions?: string; previousDocumentId?: string | null }) {
     const jdError = await flushJd.current?.()
     if (jdError) { setNotice(jdError); return }
-    const controller = new AbortController()
-    abortRef.current = controller
-    const previouslySelected = selected
-    setBusy(true); setNotice(''); setSelected(null); setLive({ kind, text: '' })
+    setNotice(''); setSelected(null)
+    let res
     try {
-      const res = await ctx.client.generate({ roleId: role.id, kind, ...opts }, {
-        signal: controller.signal,
-        onDelta: (t) => setLive((l) => (l ? { ...l, text: l.text + t } : l)),
-        onReset: () => setLive((l) => (l ? { ...l, text: '' } : l)),
-      })
-      const saved = await ctx.api.get(res.documentId)
-      setDocs((d) => [saved, ...d])
-      setLive(null); setSelected(saved.id)
-      setNotice(res.truncated ? 'This draft hit the length limit and may be cut off.' : res.jdTruncated ? 'The job description was shortened to fit.' : '')
+      res = await ctx.runs.start(role.id, { kind, ...opts })
     } catch (e) {
-      const err = e instanceof GenerateError ? e : new GenerateError('upstream')
-      if (err.code === 'unauthorized') ctx.onAuthError?.()
-      setNotice(generateErrorMessage(err))
-      // Keep partial text so it can be copied or saved; with nothing written, go back to the previous draft.
-      setLive((l) => (l && l.text ? l : null))
-      setSelected((s) => s ?? previouslySelected)
-    } finally {
-      setBusy(false)
-      abortRef.current = null
+      if (e instanceof GenerateError && e.code === 'unauthorized') ctx.onAuthError?.()
+      return // the run keeps its error and any partial text for display
     }
+    let saved: Doc | null = null
+    try {
+      saved = await ctx.api.get(res.documentId)
+    } catch {
+      try {
+        const fresh = await ctx.api.list(role.id)
+        setDocs(fresh)
+        saved = fresh.find((d) => d.id === res.documentId) ?? null
+      } catch { /* handled below */ }
+    }
+    ctx.runs.clear(role.id)
+    if (!saved) { setNotice('Draft saved. Reload the page to see it.'); return }
+    const doc = saved
+    setDocs((d) => (d.some((x) => x.id === doc.id) ? d : [doc, ...d]))
+    setSelected(doc.id)
+    setNotice(res.truncated ? 'This draft hit the length limit and may be cut off.' : res.jdTruncated ? 'The job description was shortened to fit.' : '')
   }
 
   async function saveLive(body: string): Promise<string | null> {
     if (!live) return null
     try {
       const created = await ctx.api.create({ roleId: role.id, kind: live.kind, title: `${DOC_KIND_LABEL[live.kind]} · partial`, body })
-      setDocs((d) => [created, ...d]); setLive(null); setSelected(created.id); setNotice('')
+      ctx.runs.clear(role.id)
+      setDocs((d) => [created, ...d]); setSelected(created.id); setNotice('')
       return null
     } catch (e) { return errorMessage(toRoleError(e)) }
   }
@@ -88,7 +105,7 @@ export function DocumentsPanel({ role, ctx, onSaveJobDescription, onCountChange 
       const err = await saveDoc(current.id, body)
       if (err) { setNotice(err); return }
     }
-    await run(current.kind, { instruction, questions: current.questions, previousDocumentId: current.id })
+    await start(current.kind, { instruction, questions: current.questions, previousDocumentId: current.id })
   }
 
   async function removeDoc(id: string): Promise<string | null> {
@@ -101,26 +118,28 @@ export function DocumentsPanel({ role, ctx, onSaveJobDescription, onCountChange 
   }
 
   const current = live ? null : docs.find((d) => d.id === selected) ?? docs[0] ?? null
+  const shownNotice = notice || runNotice
 
   return (
     <section className="docs" aria-label="Documents">
       <h3>Documents</h3>
       <JobDescription role={role} client={ctx.client} onSave={onSaveJobDescription} flushRef={flushJd} />
       <GenerateButtons profileReady={ctx.profileReady} busy={busy} onOpenProfile={ctx.onOpenProfile}
-        onGenerate={(kind, o) => void run(kind, o)} />
-      {notice && <p className="banner" role="status">{notice}</p>}
+        onGenerate={(kind, o) => void start(kind, o)} />
+      {shownNotice && <p className="banner" role="status">{shownNotice}</p>}
       {docs.length > 0 && (
         <ul className="draft-list">
           {docs.map((d) => (
             <li key={d.id}>
-              <button type="button" disabled={busy} aria-pressed={!live && d.id === current?.id} onClick={() => { setLive(null); setSelected(d.id) }}>{d.title}</button>
+              <button type="button" disabled={busy} aria-pressed={!live && d.id === current?.id}
+                onClick={() => { ctx.runs.clear(role.id); setNotice(''); setSelected(d.id) }}>{d.title}</button>
             </li>
           ))}
         </ul>
       )}
       {live && (
         <DraftEditor key={busy ? 'live' : 'live-done'} title={`${DOC_KIND_LABEL[live.kind]} · unsaved`} body={live.text} streaming={busy}
-          onStop={() => abortRef.current?.abort()} onSave={busy ? undefined : saveLive} />
+          onStop={() => ctx.runs.stop(role.id)} onSave={busy ? undefined : saveLive} />
       )}
       {current && (
         <DraftEditor key={current.id} title={current.title} body={current.body} streaming={false}

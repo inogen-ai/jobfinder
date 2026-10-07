@@ -10,6 +10,10 @@ describe('SignIn', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }))
     expect(onSignIn).toHaveBeenCalled()
   })
+  it('explains why the user was signed out', () => {
+    render(<SignIn refused={false} message="Your session has ended. Sign in again." onSignIn={() => {}} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Your session has ended. Sign in again.')
+  })
   it('explains a refusal', () => {
     render(<SignIn refused onSignIn={() => {}} />)
     expect(screen.getByText('This tracker is limited to InoGen accounts.')).toBeInTheDocument()

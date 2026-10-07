@@ -5,6 +5,7 @@ import { DocumentsPanel, type DocsContext } from './DocumentsPanel'
 import { makeRole } from '../test/factories'
 import { GenerateError, type GenerateClient, type GenerateHandlers } from '../lib/generate'
 import type { Doc, DocumentsApi } from '../lib/documents'
+import { RunStore } from '../lib/runStore'
 
 const doc = (over: Partial<Doc>): Doc => ({
   id: 'd1', roleId: 'r1', kind: 'cover_letter', title: 'Cover letter · 7 Oct, 14:02', body: 'Saved body', questions: '',
@@ -25,7 +26,8 @@ function fakeDocs(initial: Doc[]): DocumentsApi & { store: Doc[] } {
 }
 
 function ctx(api: DocumentsApi, generate: GenerateClient['generate']): DocsContext {
-  return { api, client: { generate, fetchPosting: vi.fn() }, profileReady: true, onOpenProfile: () => {} }
+  const client = { generate, fetchPosting: vi.fn() }
+  return { api, client, runs: new RunStore(client), profileReady: true, onOpenProfile: () => {} }
 }
 
 const props = { role: makeRole({ id: 'r1' }), onSaveJobDescription: vi.fn(async () => null), onCountChange: vi.fn() }
@@ -80,6 +82,43 @@ describe('DocumentsPanel', () => {
     render(<DocumentsPanel {...props} ctx={{ ...ctx(fakeDocs([]), generate), onAuthError }} />)
     await userEvent.click(await screen.findByRole('button', { name: 'Cover letter' }))
     await waitFor(() => expect(onAuthError).toHaveBeenCalled())
+  })
+  it('keeps generating when the panel closes, and shows progress again when reopened', async () => {
+    let h!: GenerateHandlers
+    let finish!: () => void
+    const api = fakeDocs([])
+    api.store.push(doc({ id: 'bg', title: 'Tailored CV · done', body: 'Finished CV' }))
+    const generate = vi.fn((_p: unknown, handlers: GenerateHandlers) => new Promise<{ documentId: string; model: string; truncated: boolean; jdTruncated: boolean }>((resolve) => {
+      h = handlers
+      finish = () => resolve({ documentId: 'bg', model: 'm', truncated: false, jdTruncated: false })
+    }))
+    api.list = vi.fn(async () => [])
+    const c = ctx(api, generate)
+    const first = render(<DocumentsPanel {...props} ctx={c} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Tailored CV' }))
+    act(() => { h.onDelta('Halfway') })
+    first.unmount()
+    act(() => { h.onDelta(' there') })
+    const second = render(<DocumentsPanel {...props} ctx={c} />)
+    expect(await screen.findByLabelText('Draft')).toHaveValue('Halfway there')
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+    second.unmount()
+    api.list = vi.fn(async () => [api.store[0]])
+    await act(async () => finish())
+    render(<DocumentsPanel {...props} ctx={c} />)
+    expect(await screen.findByRole('button', { name: 'Tailored CV · done' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Draft')).toHaveValue('Finished CV')
+    expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+  })
+  it('a saved draft that fails to load is not reported as unsaved', async () => {
+    const api = fakeDocs([])
+    api.get = vi.fn(async () => { throw new Error('network') })
+    api.list = vi.fn().mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('network'))
+    const generate = vi.fn(async () => ({ documentId: 'x', model: 'm', truncated: false, jdTruncated: false }))
+    render(<DocumentsPanel {...props} ctx={ctx(api, generate)} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Cover letter' }))
+    expect(await screen.findByText('Draft saved. Reload the page to see it.')).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't generate this draft. Nothing was saved.")).not.toBeInTheDocument()
   })
   it('a failed generation says nothing was saved', async () => {
     const generate = vi.fn(async () => { throw new GenerateError('upstream') })

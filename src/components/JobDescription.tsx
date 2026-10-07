@@ -9,6 +9,14 @@ export function JobDescription({ role, client, onSave, flushRef }: {
 }) {
   const [text, setText] = useState(role.jobDescription)
   const [saved, setSaved] = useState(role.jobDescription)
+  const [incoming, setIncoming] = useState(role.jobDescription)
+  const [conflict, setConflict] = useState(false)
+  // A colleague changed the description (live update): adopt it unless there are local edits.
+  if (role.jobDescription !== incoming) {
+    setIncoming(role.jobDescription)
+    if (text === saved) { setText(role.jobDescription); setSaved(role.jobDescription) }
+    else if (role.jobDescription !== text) setConflict(true)
+  }
   const [preview, setPreview] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
@@ -16,7 +24,7 @@ export function JobDescription({ role, client, onSave, flushRef }: {
   async function save(value: string) {
     setMsg('Saving…')
     const err = await onSave(value)
-    if (!err) setSaved(value)
+    if (!err) { setSaved(value); setConflict(false) }
     setMsg(err ?? 'Saved')
   }
 
@@ -59,6 +67,7 @@ export function JobDescription({ role, client, onSave, flushRef }: {
       <div className="actions">
         <button type="button" className="btn" disabled={!role.url || busy} onClick={fetchIt}>Fetch from link</button>
         {text !== saved && <button type="button" className="btn primary" onClick={() => save(text)}>Save description</button>}
+        {conflict && <span className="msg">A colleague updated this description. Saving will replace their version.</span>}
         <span className="msg" role="status">{msg}</span>
       </div>
     </div>

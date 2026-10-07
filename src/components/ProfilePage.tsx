@@ -2,6 +2,8 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { EMPTY_PROFILE, type Profile, type ProfileApi } from '../lib/profile'
 import { errorMessage, toRoleError } from '../lib/roles'
 
+const CV_LIMIT = 40_000
+
 type TextKey = Exclude<keyof Profile, 'availableFrom'>
 
 export function ProfilePage({ api, onBack, onSaved }: { api: ProfileApi; onBack: () => void; onSaved: (p: Profile) => void }) {
@@ -22,6 +24,7 @@ export function ProfilePage({ api, onBack, onSaved }: { api: ProfileApi; onBack:
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    if (profile.cvText.length > CV_LIMIT) { setMsg('Your CV is over 40,000 characters. Shorten it before saving.'); return }
     setMsg('Saving…')
     try {
       const saved = await api.save(profile)
@@ -53,8 +56,12 @@ export function ProfilePage({ api, onBack, onSaved }: { api: ProfileApi; onBack:
           <label><span>Location</span><input id="pf-location" value={profile.location} onChange={field('location')} /></label>
           <label><span>Preferences</span><input id="pf-preferences" value={profile.preferences} onChange={field('preferences')} placeholder="Remote, outside IR35" /></label>
           <label className="full"><span>CV</span>
-            <textarea id="pf-cv" className="cv" maxLength={40000} value={profile.cvText} onChange={field('cvText')}
+            <textarea id="pf-cv" className="cv" value={profile.cvText} onChange={field('cvText')}
               placeholder="Paste your CV here, as plain text or markdown" /></label>
+          <p className={`full hint${profile.cvText.length > CV_LIMIT ? ' over' : ''}`}>
+            {!profile.cvText.trim() && <strong>Add your CV to start generating documents. </strong>}
+            <span>{profile.cvText.length.toLocaleString('en-GB')} / {CV_LIMIT.toLocaleString('en-GB')} characters</span>
+          </p>
           <label className="full"><span>Always mention</span>
             <textarea id="pf-always" value={profile.alwaysMention} onChange={field('alwaysMention')} /></label>
           <label className="full"><span>Never mention</span>

@@ -5,6 +5,7 @@ import { Pipeline } from './Pipeline'
 import { makeRole } from '../test/factories'
 import { RoleError, type RoleChange, type LiveStatus, type RolesApi } from '../lib/roles'
 import type { Role } from '../lib/types'
+import { RunStore } from '../lib/runStore'
 
 const now = new Date(2026, 9, 6, 9)
 
@@ -71,6 +72,42 @@ describe('Pipeline', () => {
     expect(screen.queryByText('Role A')).not.toBeInTheDocument()
   })
 
+  it('a slow failed status change cannot undo a later successful one', async () => {
+    const { api } = fakeApi([makeRole({ id: 'a', title: 'Role A' })])
+    let failFirst!: () => void
+    vi.mocked(api.update)
+      .mockImplementationOnce(() => new Promise((_, reject) => { failFirst = () => reject(new RoleError('down', 'network')) }))
+      .mockImplementationOnce(async (_id, patch) => ({ ...makeRole({ id: 'a', title: 'Role A' }), ...patch } as Role))
+    render(<Pipeline api={api} {...props} />)
+    const select = await screen.findByLabelText('Status for Role A')
+    await userEvent.selectOptions(select, 'Applied')
+    await userEvent.selectOptions(select, 'Interviewing')
+    await waitFor(() => expect(api.update).toHaveBeenCalledTimes(2))
+    await act(async () => failFirst())
+    expect(screen.getByLabelText('Status for Role A')).toHaveValue('Interviewing')
+  })
+  it('a status change on a role someone deleted removes the row', async () => {
+    const { api } = fakeApi([makeRole({ id: 'a', title: 'Role A' })])
+    vi.mocked(api.update).mockRejectedValueOnce(new RoleError('0 rows', 'missing'))
+    render(<Pipeline api={api} {...props} />)
+    await userEvent.selectOptions(await screen.findByLabelText('Status for Role A'), 'Applied')
+    expect(await screen.findByText('This role was deleted by someone else.')).toBeInTheDocument()
+    expect(screen.queryByText('Role A')).not.toBeInTheDocument()
+  })
+  it('the clock ticks: the countdown changes at midnight', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    try {
+      vi.setSystemTime(new Date(2026, 9, 6, 23, 59, 30))
+      const { api } = fakeApi([])
+      const { now: _ignored, ...noClock } = props
+      render(<Pipeline api={api} {...noClock} />)
+      expect(await screen.findByText('25')).toBeInTheDocument()
+      await act(async () => { vi.advanceTimersByTime(60_000) })
+      expect(screen.getByText('24')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('applies live upserts from colleagues', async () => {
     const { api, push } = fakeApi([])
     render(<Pipeline api={api} {...props} />)
@@ -108,6 +145,7 @@ describe('Pipeline', () => {
     const docs = {
       api: { list: vi.fn(async () => []), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), countByRole: vi.fn(async () => ({ a: 2 })) },
       client: { generate: vi.fn(), fetchPosting: vi.fn() },
+      runs: new RunStore({ generate: vi.fn(), fetchPosting: vi.fn() }),
       profileReady: true,
       onOpenProfile,
     }

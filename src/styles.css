@@ -189,3 +189,5 @@ textarea.cv { min-height: 320px; font-family: var(--f-mono); font-size: 13px; }
 .docs input, .docs textarea { width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 7px; padding: 6px 10px; font: inherit; }
 .docs .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .docs .msg { font-size: 13px; color: var(--muted); }
+.hint { margin: 0; font-size: 12.5px; color: var(--muted); }
+.hint.over { color: var(--bad); }
