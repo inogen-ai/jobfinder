@@ -31,3 +31,11 @@ jobs:
       - run: npm ci
       - run: npx supabase db start
       - run: npx supabase test db
+  functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v2.x }
+      - run: deno test --config supabase/functions/deno.json supabase/functions
+      - run: deno check --config supabase/functions/deno.json supabase/functions/generate/index.ts supabase/functions/fetch-posting/index.ts

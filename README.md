@@ -23,6 +23,22 @@ Needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env` (never commit it;
 
     uv run scripts/add_role.py --title "AI Engineer" --org "Acme" --market NL --fit Strong --url https://...
 
+## Documents (cover letters, pitches, CVs, answers)
+
+Each user keeps a private profile ("My profile"). From an open role, the Documents panel generates drafts with
+Claude Opus 5.5 through two Supabase Edge Functions: `generate` (streams a draft and saves it) and
+`fetch-posting` (pulls the job description from the role's link). Drafts are private to their author.
+
+    npm run test:functions                                  # Deno tests for the functions
+    npx supabase functions serve --env-file supabase/.env.functions   # local; file holds ANTHROPIC_API_KEY, git-ignored
+
+Deploy:
+
+    npx supabase secrets set ANTHROPIC_API_KEY=... --project-ref unvfkjsgxmzqasrblszo
+    npx supabase functions deploy generate fetch-posting --project-ref unvfkjsgxmzqasrblszo
+
+Limits: 20 generations and 20 fetches per user per hour. Every call is logged with token counts (no document text).
+
 ## Deploy
 
 Every push to `main` runs CI and deploys to Pages. Repo variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
