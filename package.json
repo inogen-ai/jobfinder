@@ -12,7 +12,7 @@
     "test": "TZ=Europe/Amsterdam vitest run",
     "test:watch": "TZ=Europe/Amsterdam vitest",
     "e2e": "playwright test",
-    "test:functions": "deno test supabase/functions"
+    "test:functions": "deno test --config supabase/functions/deno.json supabase/functions"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
