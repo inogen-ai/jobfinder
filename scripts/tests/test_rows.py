@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from add_role import build_row, slugify  # noqa: E402
 from migrate_from_artifact import artifact_doc_to_row, load_export  # noqa: E402
+from supabase_rest import COLUMNS  # noqa: E402
 
 
 def test_artifact_doc_maps_camel_fields_and_empty_dates():
@@ -21,6 +22,14 @@ def test_artifact_doc_maps_camel_fields_and_empty_dates():
     assert row["next_date"] == "2026-10-07"
     assert row["deadline"] is None and row["posted"] is None
     assert "created" not in row and "updated" not in row and "next" not in row
+
+
+def test_rows_with_different_source_keys_share_one_key_set():
+    # PostgREST bulk upserts reject rows whose keys differ (PGRST102).
+    a = artifact_doc_to_row("a", {"title": "A", "org": "O", "market": "UK", "fit": "Good", "nextDate": "2026-10-07"})
+    b = artifact_doc_to_row("b", {"title": "B", "org": "O", "market": "EU", "fit": "Good", "contact": "x"})
+    assert set(a) == set(b) == COLUMNS
+    assert a["contact"] == "" and b["next_date"] is None
 
 
 def test_load_export_reads_both_shapes(tmp_path: Path):
@@ -38,7 +47,9 @@ def test_slugify():
 
 def test_build_row_defaults_and_validation():
     row = build_row({"title": "T", "org": "O", "market": "NL", "fit": "Good"})
-    assert row["id"] == "nl-o-t" and row["status"] == "Shortlist"
+    # No status unless given: a new row gets the column default (Shortlist), an existing one keeps its status.
+    assert row["id"] == "nl-o-t" and "status" not in row
+    assert build_row({"title": "T", "org": "O", "market": "NL", "fit": "Good", "status": "Applied"})["status"] == "Applied"
     with pytest.raises(ValueError, match="market"):
         build_row({"title": "T", "org": "O", "market": "Mars", "fit": "Good"})
     with pytest.raises(ValueError, match="title"):

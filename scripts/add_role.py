@@ -31,11 +31,12 @@ def build_row(fields: dict) -> dict:
         raise ValueError(f"market must be one of {sorted(MARKETS)}")
     if fields["fit"] not in FITS:
         raise ValueError(f"fit must be one of {sorted(FITS)}")
-    status = fields.get("status") or "Shortlist"
-    if status not in STATUSES:
+    status = fields.get("status")
+    if status is not None and status not in STATUSES:
         raise ValueError(f"status must be one of {sorted(STATUSES)}")
+    # Status is only sent when given: a new row gets the column default (Shortlist),
+    # and re-running for an existing role keeps its current status.
     row = {k: v for k, v in fields.items() if k in COLUMNS and v is not None}
-    row["status"] = status
     row["id"] = fields.get("id") or slugify(fields["market"], fields["org"], fields["title"])
     for col in DATE_COLUMNS:
         if col in row and row[col] == "":

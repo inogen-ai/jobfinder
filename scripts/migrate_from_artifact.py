@@ -19,7 +19,9 @@ FIELD_MAP = {"next": "next_step", "nextDate": "next_date"}
 
 
 def artifact_doc_to_row(doc_id: str, data: dict) -> dict:
-    row: dict = {"id": doc_id}
+    # Every row carries every column: PostgREST bulk upserts reject rows whose keys differ.
+    row: dict = {col: (None if col in DATE_COLUMNS else "") for col in COLUMNS}
+    row.update({"id": doc_id, "status": "Shortlist"})
     for key, value in data.items():
         col = FIELD_MAP.get(key, key)
         if col not in COLUMNS or col == "id":
