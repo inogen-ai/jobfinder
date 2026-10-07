@@ -6,6 +6,7 @@ export interface RoleRow {
   ir35: string; duration: string; posted: string | null; deadline: string | null; next_date: string | null
   fit: string; status: string; why: string; caveat: string; url: string; contact: string; next_step: string
   notes: string; cv: string; created_at: string; updated_at: string; created_by: string | null; updated_by: string | null
+  deleted_at?: string | null
 }
 
 export type RoleInput = Omit<Role, 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>
@@ -99,7 +100,7 @@ export interface RolesApi {
 export function createRolesApi(sb: SupabaseClient): RolesApi {
   return {
     async list() {
-      const { data, error } = await sb.from('roles').select('*')
+      const { data, error } = await sb.from('roles').select('*').is('deleted_at', null)
       if (error) throw toRoleError(error)
       return (data as RoleRow[]).map(rowToRole)
     },
@@ -113,8 +114,9 @@ export function createRolesApi(sb: SupabaseClient): RolesApi {
       if (error) throw toRoleError(error)
       return rowToRole(data as RoleRow)
     },
+    // Soft delete: an RLS-checked UPDATE, because Supabase realtime does not apply RLS to DELETE events.
     async remove(id) {
-      const { error } = await sb.from('roles').delete().eq('id', id)
+      const { error } = await sb.from('roles').update({ deleted_at: new Date().toISOString() }).eq('id', id)
       if (error) throw toRoleError(error)
     },
     subscribe(onChange, onStatus) {
@@ -123,8 +125,10 @@ export function createRolesApi(sb: SupabaseClient): RolesApi {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'roles' }, (payload: {
           eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: unknown; old: unknown
         }) => {
+          const next = payload.new as RoleRow
           if (payload.eventType === 'DELETE') onChange({ type: 'delete', id: (payload.old as { id: string }).id })
-          else onChange({ type: 'upsert', role: rowToRole(payload.new as RoleRow) })
+          else if (next.deleted_at) onChange({ type: 'delete', id: next.id })
+          else onChange({ type: 'upsert', role: rowToRole(next) })
         })
         .subscribe((status: string) => onStatus(status === 'SUBSCRIBED' ? 'live' : 'paused'))
       return () => { void sb.removeChannel(channel) }

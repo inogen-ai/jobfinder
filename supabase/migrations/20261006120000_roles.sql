@@ -24,14 +24,21 @@ create table public.roles (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   created_by  text,
-  updated_by  text
+  updated_by  text,
+  deleted_at  timestamptz
 );
 
--- Exact domain match, case-insensitive. Rejects "x@inogen.ai.evil.com" and "x@notinogen.ai".
+-- The browser never connects anonymously to this table.
+revoke all on public.roles from anon;
+
+-- Exact domain match, case-insensitive (rejects "x@inogen.ai.evil.com" and "x@notinogen.ai"),
+-- and only for identities that signed in through Microsoft Entra. app_metadata is server-controlled,
+-- so a password sign-up with an @inogen.ai address does not pass.
 create or replace function public.is_inogen() returns boolean
 language sql stable
 as $$
   select lower(split_part(coalesce(auth.jwt() ->> 'email', ''), '@', 2)) = 'inogen.ai'
+     and coalesce(auth.jwt() -> 'app_metadata' ->> 'provider', '') = 'azure'
 $$;
 
 alter table public.roles enable row level security;
@@ -39,7 +46,8 @@ alter table public.roles enable row level security;
 create policy roles_select on public.roles for select to authenticated using (public.is_inogen());
 create policy roles_insert on public.roles for insert to authenticated with check (public.is_inogen());
 create policy roles_update on public.roles for update to authenticated using (public.is_inogen()) with check (public.is_inogen());
-create policy roles_delete on public.roles for delete to authenticated using (public.is_inogen());
+-- No delete policy: the app soft-deletes (deleted_at) so every change reaches realtime as an
+-- RLS-checked UPDATE. Supabase does not apply RLS to DELETE events, which would leak ids.
 
 create or replace function public.roles_audit() returns trigger
 language plpgsql

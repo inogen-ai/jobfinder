@@ -10,7 +10,7 @@ const row: RoleRow = {
   ir35: '', duration: '', posted: '2026-09-18', deadline: '2026-10-18', next_date: null, fit: 'Strong',
   status: 'Shortlist', why: 'RAG', caveat: '', url: 'https://x', contact: '', next_step: 'Send CV', notes: '',
   cv: 'A', created_at: '2026-10-06T10:00:00Z', updated_at: '2026-10-06T11:00:00Z',
-  created_by: 'claude-script', updated_by: 'michael.snow@inogen.ai',
+  created_by: 'claude-script', updated_by: 'michael.snow@inogen.ai', deleted_at: null,
 }
 
 describe('mapping', () => {
@@ -77,6 +77,19 @@ function fakeSb(result: { data: unknown; error: unknown }) {
 }
 
 describe('createRolesApi', () => {
+  it('list asks only for rows that are not soft-deleted', async () => {
+    const { client, calls } = fakeSb({ data: [row], error: null })
+    await createRolesApi(client).list()
+    expect(calls).toContainEqual(['is', ['deleted_at', null]])
+  })
+  it('remove soft-deletes instead of deleting', async () => {
+    const { client, calls } = fakeSb({ data: null, error: null })
+    await createRolesApi(client).remove('nl-x')
+    expect(calls.map(([m]) => m)).not.toContain('delete')
+    const update = calls.find(([m]) => m === 'update')
+    expect(update?.[1][0]).toEqual({ deleted_at: expect.any(String) })
+    expect(calls).toContainEqual(['eq', ['id', 'nl-x']])
+  })
   it('list maps rows', async () => {
     const { client } = fakeSb({ data: [row], error: null })
     expect((await createRolesApi(client).list())[0].id).toBe('nl-x')
@@ -104,9 +117,11 @@ describe('createRolesApi', () => {
     const unsub = createRolesApi(client).subscribe(onChange, onStatus)
     handler({ eventType: 'UPDATE', new: row, old: {} })
     handler({ eventType: 'DELETE', new: {}, old: { id: 'nl-x' } })
+    handler({ eventType: 'UPDATE', new: { ...row, id: 'soft', deleted_at: '2026-10-07T10:00:00Z' }, old: {} })
     statusCb('SUBSCRIBED'); statusCb('CHANNEL_ERROR')
     expect(onChange).toHaveBeenNthCalledWith(1, { type: 'upsert', role: rowToRole(row) })
     expect(onChange).toHaveBeenNthCalledWith(2, { type: 'delete', id: 'nl-x' })
+    expect(onChange).toHaveBeenNthCalledWith(3, { type: 'delete', id: 'soft' })
     expect(onStatus.mock.calls).toEqual([['live'], ['paused']])
     unsub()
     expect(removeChannel).toHaveBeenCalledWith(channel)
