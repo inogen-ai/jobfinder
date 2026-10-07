@@ -11,7 +11,8 @@
     "typecheck": "tsc -b",
     "test": "TZ=Europe/Amsterdam vitest run",
     "test:watch": "TZ=Europe/Amsterdam vitest",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "test:functions": "deno test supabase/functions"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
@@ -27,6 +28,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "deno": "^2.9.6",
     "jsdom": "^29.1.1",
     "oxlint": "^1.81.0",
     "supabase": "^2.120.0",
