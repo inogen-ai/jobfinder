@@ -35,8 +35,8 @@ export interface PromptInput {
 
 export interface BuiltPrompt { system: string; userMessage: string; effort: 'medium' | 'high'; jdTruncated: boolean }
 
-const TAG = /<\/?(posting|profile|task|questions|previous_draft|instruction)>/gi
-const clean = (s: string) => s.replace(TAG, '')
+// Data can never open or close a section: neutralise every angle bracket rather than pattern-matching tags.
+const clean = (s: string) => s.replace(/</g, '‹').replace(/>/g, '›')
 const section = (tag: string, body: string) => `<${tag}>\n${clean(body).trim() || 'not provided'}\n</${tag}>`
 const line = (label: string, value: string | null) => (value && value.trim() ? `${label}: ${value.trim()}` : null)
 

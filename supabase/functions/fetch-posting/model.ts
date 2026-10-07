@@ -13,6 +13,7 @@ export function anthropicRunFetch(client: Anthropic): RunFetch {
       tools: [{ type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 1, allowed_domains: [new URL(url).hostname] }],
       messages: [{ role: 'user', content: prompt(url) }],
     })
-    return interpretFetch(msg.content as Array<{ type: string; text?: string; content?: { type?: string } }>, msg.stop_reason)
+    const usage = { input_tokens: msg.usage.input_tokens, output_tokens: msg.usage.output_tokens }
+    return { ...interpretFetch(msg.content as Array<{ type: string; text?: string; content?: { type?: string } }>, msg.stop_reason), usage }
   }
 }

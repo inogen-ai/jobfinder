@@ -21,8 +21,7 @@ export interface Store {
   getRole(id: string): Promise<RoleCtx | null>
   getProfile(): Promise<ProfileCtx | null>
   getDocumentBody(id: string): Promise<string | null>
-  countDocumentsSince(iso: string): Promise<{ count: number; oldest: string | null }>
   insertDocument(d: NewDocumentRow): Promise<string>
-  countFetchesSince(iso: string): Promise<{ count: number; oldest: string | null }>
-  insertFetch(roleId: string): Promise<void>
+  /** Atomically checks the hourly limit and records the call. Returns null when allowed, else the ISO time it frees up. */
+  claimUsage(action: 'generate' | 'fetch', roleId: string, limit: number): Promise<string | null>
 }

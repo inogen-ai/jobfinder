@@ -5,18 +5,17 @@ import type { BuiltPrompt } from '../_shared/prompt.ts'
 
 function fakeStore(over: Partial<Store> = {}) {
   const inserted: NewDocumentRow[] = []
+  const claims: Array<[string, string, number]> = []
   const store: Store = {
     getUser: async () => ({ id: 'u1', email: 'mike@inogen.ai', provider: 'azure' }),
     getRole: async () => ({ title: 'AI Engineer', org: 'Interex', location: '', remote: '', rate: '', ir35: '', duration: '', url: 'https://x', jobDescription: 'Build RAG' }),
     getProfile: async () => ({ headline: '', cvText: 'My CV', rate: '', availableFrom: null, location: '', preferences: '', alwaysMention: '', neverMention: '' }),
     getDocumentBody: async () => 'old draft',
-    countDocumentsSince: async () => ({ count: 0, oldest: null }),
     insertDocument: async (d) => { inserted.push(d); return 'doc-1' },
-    countFetchesSince: async () => ({ count: 0, oldest: null }),
-    insertFetch: async () => {},
+    claimUsage: async (action, roleId, limit) => { claims.push([action, roleId, limit]); return null },
     ...over,
   }
-  return { store, inserted }
+  return { store, inserted, claims }
 }
 
 function scripted(events: ModelEvent[], result: Partial<ModelResult> = {}): { run: RunModel; prompts: BuiltPrompt[] } {
@@ -35,7 +34,7 @@ const post = (body: unknown, auth = 'Bearer jwt') =>
   new Request('https://fn/generate', { method: 'POST', headers: { Authorization: auth, Origin: 'https://jobfinder.inogen.ai', 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
 function events(text: string) {
-  return text.trim().split('\n\n').map((block) => {
+  return text.trim().split('\n\n').filter((block) => !block.startsWith(':')).map((block) => {
     const [ev, data] = block.split('\n')
     return { event: ev.replace('event: ', ''), data: JSON.parse(data.replace('data: ', '')) }
   })
@@ -62,11 +61,80 @@ Deno.test('409 when the profile has no CV', async () => {
   assertEquals(res.status, 409)
   assertEquals((await res.json()).code, 'profile_missing')
 })
-Deno.test('429 at the hourly limit, with retryAt', async () => {
-  const { store } = fakeStore({ countDocumentsSince: async () => ({ count: HOURLY_LIMIT, oldest: '2026-10-07T12:10:00.000Z' }) })
-  const res = await handleGenerate(post(ok), { store: () => store, runModel: scripted([]).run, now: () => new Date('2026-10-07T13:00:00Z'), ...quiet })
+Deno.test('429 at the hourly limit, with retryAt, and the model is never called', async () => {
+  const { store } = fakeStore({ claimUsage: async () => '2026-10-07T13:10:00.000Z' })
+  const { run, prompts } = scripted([])
+  const res = await handleGenerate(post(ok), { store: () => store, runModel: run, ...quiet })
   assertEquals(res.status, 429)
   assertEquals(await res.json(), { code: 'rate_limited', retryAt: '2026-10-07T13:10:00.000Z' })
+  assertEquals(prompts.length, 0)
+})
+Deno.test('claims a generate slot before calling the model, even when the run is refused', async () => {
+  const { store, claims } = fakeStore()
+  const { run } = scripted([], { stopReason: 'refusal', text: '' })
+  await (await handleGenerate(post(ok), { store: () => store, runModel: run, ...quiet })).text()
+  assertEquals(claims, [['generate', 'r1', HOURLY_LIMIT]])
+})
+Deno.test('a request abort aborts the model and saves nothing', async () => {
+  const { store, inserted } = fakeStore()
+  let aborted = false
+  let finished!: () => void
+  const logged = new Promise<void>((r) => { finished = r })
+  const run: RunModel = (_p, signal) => ({
+    events: (async function* () {
+      yield { type: 'text', text: 'partial' } as ModelEvent
+      await new Promise((_, reject) => signal.addEventListener('abort', () => { aborted = true; reject(new Error('aborted')) }))
+    })(),
+    final: async () => ({ stopReason: 'end_turn', text: 'x', model: 'm', usage: { input_tokens: 0, output_tokens: 0 } }),
+  })
+  const ctrl = new AbortController()
+  const req = new Request('https://fn/generate', { method: 'POST', headers: { Authorization: 'Bearer jwt' }, body: JSON.stringify(ok), signal: ctrl.signal })
+  const res = await handleGenerate(req, { store: () => store, runModel: run, log: () => finished() })
+  await res.body!.getReader().read()
+  ctrl.abort()
+  await logged
+  assert(aborted)
+  assertEquals(inserted.length, 0)
+})
+Deno.test('an abort that lands after the model finished still saves nothing', async () => {
+  const { store, inserted } = fakeStore()
+  let release!: () => void
+  const gate = new Promise<void>((r) => { release = r })
+  let finished!: () => void
+  const logged = new Promise<void>((r) => { finished = r })
+  const run: RunModel = () => ({
+    events: (async function* () { yield { type: 'text', text: 'all' } as ModelEvent })(),
+    final: async () => { await gate; return { stopReason: 'end_turn', text: 'all', model: 'm', usage: { input_tokens: 1, output_tokens: 1 } } },
+  })
+  const res = await handleGenerate(post(ok), { store: () => store, runModel: run, log: () => finished() })
+  const reader = res.body!.getReader()
+  await reader.read()
+  await reader.cancel()
+  release()
+  await logged
+  assertEquals(inserted.length, 0)
+})
+Deno.test('sends keep-alive comments while the model is silent', async () => {
+  const { store } = fakeStore()
+  const run: RunModel = () => ({
+    events: (async function* () { await new Promise((r) => setTimeout(r, 40)); yield { type: 'text', text: 'Hi' } as ModelEvent })(),
+    final: async () => ({ stopReason: 'end_turn', text: 'Hi', model: 'm', usage: { input_tokens: 1, output_tokens: 1 } }),
+  })
+  const body = await (await handleGenerate(post(ok), { store: () => store, runModel: run, pingMs: 5, ...quiet })).text()
+  assert(body.includes(': ping\n\n'))
+})
+Deno.test('logs the upstream error type and status, never its message', async () => {
+  const { store } = fakeStore()
+  const entries: Record<string, unknown>[] = []
+  const run: RunModel = () => ({
+    events: (async function* () { throw Object.assign(new Error('secret prompt text'), { name: 'OverloadedError', status: 529 }) })(),
+    final: () => Promise.reject(new Error('unused')),
+  })
+  await (await handleGenerate(post(ok), { store: () => store, runModel: run, log: (e) => entries.push(e) })).text()
+  assertEquals(entries[0].outcome, 'upstream')
+  assertEquals(entries[0].errorType, 'OverloadedError')
+  assertEquals(entries[0].errorStatus, 529)
+  assert(!JSON.stringify(entries).includes('secret prompt text'))
 })
 Deno.test('streams deltas, saves one document with token counts, and reports done', async () => {
   const { store, inserted } = fakeStore()

@@ -8,12 +8,6 @@ export function supabaseStore(url: string, anonKey: string, authorization: strin
     global: { headers: { Authorization: authorization } },
     auth: { persistSession: false, autoRefreshToken: false },
   })
-  const countSince = async (table: string, iso: string) => {
-    const { data, count, error } = await sb.from(table).select('created_at', { count: 'exact' })
-      .gte('created_at', iso).order('created_at', { ascending: true }).limit(1)
-    if (error) throw error
-    return { count: count ?? 0, oldest: (data?.[0] as { created_at?: string } | undefined)?.created_at ?? null }
-  }
   return {
     async getUser() {
       if (!jwt) return null
@@ -48,7 +42,6 @@ export function supabaseStore(url: string, anonKey: string, authorization: strin
       if (error) throw error
       return (data as { body: string } | null)?.body ?? null
     },
-    countDocumentsSince: (iso) => countSince('documents', iso),
     async insertDocument(d: NewDocumentRow) {
       const { data, error } = await sb.from('documents').insert({
         role_id: d.roleId, kind: d.kind, title: d.title, body: d.body, questions: d.questions, instruction: d.instruction,
@@ -57,10 +50,10 @@ export function supabaseStore(url: string, anonKey: string, authorization: strin
       if (error) throw error
       return (data as { id: string }).id
     },
-    countFetchesSince: (iso) => countSince('fetch_log', iso),
-    async insertFetch(roleId) {
-      const { error } = await sb.from('fetch_log').insert({ role_id: roleId })
+    async claimUsage(action, roleId, limit) {
+      const { data, error } = await sb.rpc('claim_usage', { p_action: action, p_role_id: roleId, p_limit: limit })
       if (error) throw error
+      return data ? new Date(data as string).toISOString() : null
     },
   }
 }

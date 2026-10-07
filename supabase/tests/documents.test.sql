@@ -1,8 +1,8 @@
 begin;
-select plan(14);
+select plan(21);
 
 -- Hermetic setup (rolled back at the end). Deleting roles cascades to documents.
-delete from public.fetch_log;
+delete from public.usage_log;
 delete from public.profiles;
 delete from public.roles;
 insert into auth.users (id, email) values
@@ -23,7 +23,23 @@ select throws_ok($$insert into public.documents (role_id, kind, title, body, mod
 select is((select count(*)::int from public.documents), 1, 'user reads own documents');
 select lives_ok($$update public.roles set job_description = 'JD' where id = 'r1'$$, 'job_description is editable like other role fields');
 update public.documents set user_id = '00000000-0000-0000-0000-00000000000b';
-select lives_ok($$insert into public.fetch_log (role_id) values ('r1')$$, 'user logs a fetch');
+-- spend limit cannot be dodged by rewriting history
+insert into public.documents (role_id, kind, title, body, model, created_at) values ('r1', 'pitch', 'old', 'b', 'm', '2000-01-01');
+select ok((select created_at from public.documents where title = 'old') > now() - interval '1 minute', 'insert cannot backdate created_at');
+update public.documents set created_at = '2000-01-01', model = 'forged', input_tokens = 0, kind = 'cv' where title = 'old';
+select ok((select created_at from public.documents where title = 'old') > now() - interval '1 minute', 'update cannot backdate created_at');
+select is((select model || '/' || kind from public.documents where title = 'old'), 'm/pitch', 'update cannot change model or kind');
+select is(public.claim_usage('generate', 'r1', 2), null, 'first claim is allowed');
+select is(public.claim_usage('generate', 'r1', 2), null, 'second claim is allowed');
+select isnt(public.claim_usage('generate', 'r1', 2), null, 'third claim over the limit returns a retry time');
+select is((select count(*)::int from public.usage_log where action = 'generate'), 2, 'refused claims are not recorded');
+insert into public.usage_log (action, role_id, created_at) values ('fetch', 'r1', '2000-01-01');
+update public.usage_log set created_at = '2000-01-01';
+delete from public.usage_log;
+reset role;
+select is((select count(*)::int from public.usage_log where created_at > now() - interval '1 minute'), 3, 'usage rows cannot be backdated, edited or deleted by the user');
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","email":"a@inogen.ai","role":"authenticated","app_metadata":{"provider":"azure"}}';
 reset role;
 select is((select user_id::text from public.documents limit 1), '00000000-0000-0000-0000-00000000000a', 'document owner cannot be reassigned');
 

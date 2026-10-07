@@ -1,6 +1,6 @@
 import { buildPrompt, DOC_KINDS, KIND_LABEL, MAX_INSTRUCTION, MAX_QUESTIONS, type BuiltPrompt, type DocKind } from '../_shared/prompt.ts'
 import { isAllowedUser } from '../_shared/auth.ts'
-import { corsHeaders, json, retryAtFrom } from '../_shared/http.ts'
+import { corsHeaders, json } from '../_shared/http.ts'
 import { sseEvent } from '../_shared/sse.ts'
 import type { Store } from '../_shared/types.ts'
 
@@ -16,6 +16,8 @@ export interface GenerateDeps {
   runModel: RunModel
   now?: () => Date
   log?: (entry: Record<string, unknown>) => void
+  /** Keep-alive interval while the model is silent (thinking). */
+  pingMs?: number
 }
 
 const stamp = (d: Date) => new Intl.DateTimeFormat('en-GB', {
@@ -50,18 +52,27 @@ export async function handleGenerate(req: Request, deps: GenerateDeps): Promise<
   if (!role) return json(req, 404, { code: 'role_not_found' })
   if (!profile || !profile.cvText.trim()) return json(req, 409, { code: 'profile_missing' })
 
-  const recent = await store.countDocumentsSince(new Date(now().getTime() - 3_600_000).toISOString())
-  if (recent.count >= HOURLY_LIMIT) return json(req, 429, { code: 'rate_limited', retryAt: retryAtFrom(recent.oldest, now()) })
-
   const previous = previousId ? await store.getDocumentBody(previousId) : null
   const prompt = buildPrompt({ kind, role, profile, instruction, questions, previous })
+
+  // Recorded before the model runs, so stopped, refused and failed runs count against the limit too.
+  const retryAt = await store.claimUsage('generate', roleId, HOURLY_LIMIT)
+  if (retryAt) return json(req, 429, { code: 'rate_limited', retryAt })
+
   const controller = new AbortController()
+  req.signal?.addEventListener('abort', () => controller.abort())
   const started = now().getTime()
 
   const stream = new ReadableStream<Uint8Array>({
     async start(out) {
-      const send = (name: string, data: unknown) => { try { out.enqueue(sseEvent(name, data)) } catch { /* client gone */ } }
+      const send = (name: string, data: unknown) => {
+        try { out.enqueue(sseEvent(name, data)) } catch { controller.abort() } // client gone: stop the model
+      }
+      const ping = setInterval(() => {
+        try { out.enqueue(new TextEncoder().encode(': ping\n\n')) } catch { controller.abort() }
+      }, deps.pingMs ?? 15_000)
       let outcome = 'ok'
+      let error: { errorType?: string; errorStatus?: number } = {}
       let model = ''
       let usage = { input_tokens: 0, output_tokens: 0 }
       try {
@@ -73,6 +84,7 @@ export async function handleGenerate(req: Request, deps: GenerateDeps): Promise<
         const result = await run.final()
         model = result.model
         usage = result.usage
+        if (controller.signal.aborted) { outcome = 'aborted'; return }
         if (result.stopReason === 'refusal' || !result.text) {
           outcome = 'refused'
           send('error', { code: 'refused' })
@@ -83,11 +95,14 @@ export async function handleGenerate(req: Request, deps: GenerateDeps): Promise<
           model: result.model, inputTokens: usage.input_tokens, outputTokens: usage.output_tokens,
         })
         send('done', { documentId, model: result.model, usage, truncated: result.stopReason === 'max_tokens', jdTruncated: prompt.jdTruncated })
-      } catch {
+      } catch (e) {
         outcome = controller.signal.aborted ? 'aborted' : 'upstream'
+        const err = e as { name?: string; status?: number }
+        error = { errorType: err?.name, errorStatus: typeof err?.status === 'number' ? err.status : undefined }
         if (!controller.signal.aborted) send('error', { code: 'upstream' })
       } finally {
-        log({ fn: 'generate', user: user.id, kind, model, ...usage, ms: now().getTime() - started, outcome })
+        clearInterval(ping)
+        log({ fn: 'generate', user: user.id, kind, model, ...usage, ms: now().getTime() - started, outcome, ...error })
         try { out.close() } catch { /* already closed */ }
       }
     },
