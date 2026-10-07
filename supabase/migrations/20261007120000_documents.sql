@@ -1,0 +1,97 @@
+-- Shared: the posting text, same for everyone who can see the role.
+alter table public.roles add column job_description text not null default '';
+
+-- Private per user.
+create table public.profiles (
+  user_id        uuid primary key default auth.uid() references auth.users(id) on delete cascade,
+  headline       text not null default '',
+  cv_text        text not null default '' check (char_length(cv_text) <= 40000),
+  rate           text not null default '',
+  available_from date,
+  location       text not null default '',
+  preferences    text not null default '',
+  always_mention text not null default '',
+  never_mention  text not null default '',
+  updated_at     timestamptz not null default now()
+);
+
+create table public.documents (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  role_id       text not null references public.roles(id) on delete cascade,
+  kind          text not null check (kind in ('cover_letter','pitch','cv','answers')),
+  title         text not null,
+  body          text not null,
+  questions     text not null default '',
+  instruction   text not null default '',
+  model         text not null,
+  input_tokens  int not null default 0,
+  output_tokens int not null default 0,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  deleted_at    timestamptz
+);
+create index documents_user_role on public.documents (user_id, role_id) where deleted_at is null;
+create index documents_user_created on public.documents (user_id, created_at);
+
+-- Rate-limit ledger for fetch-posting.
+create table public.fetch_log (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  role_id    text not null,
+  created_at timestamptz not null default now()
+);
+create index fetch_log_user_created on public.fetch_log (user_id, created_at);
+
+revoke all on public.profiles, public.documents, public.fetch_log from anon;
+
+alter table public.profiles  enable row level security;
+alter table public.documents enable row level security;
+alter table public.fetch_log enable row level security;
+
+create policy profiles_select on public.profiles for select to authenticated
+  using (public.is_inogen() and user_id = auth.uid());
+create policy profiles_insert on public.profiles for insert to authenticated
+  with check (public.is_inogen() and user_id = auth.uid());
+create policy profiles_update on public.profiles for update to authenticated
+  using (public.is_inogen() and user_id = auth.uid()) with check (public.is_inogen() and user_id = auth.uid());
+
+create policy documents_select on public.documents for select to authenticated
+  using (public.is_inogen() and user_id = auth.uid());
+-- The role must be one the caller can see (roles RLS applies inside the subquery) and not soft-deleted.
+create policy documents_insert on public.documents for insert to authenticated
+  with check (
+    public.is_inogen() and user_id = auth.uid()
+    and exists (select 1 from public.roles r where r.id = documents.role_id and r.deleted_at is null)
+  );
+create policy documents_update on public.documents for update to authenticated
+  using (public.is_inogen() and user_id = auth.uid()) with check (public.is_inogen() and user_id = auth.uid());
+-- No delete policy: documents are soft-deleted (deleted_at), like roles.
+
+create policy fetch_log_select on public.fetch_log for select to authenticated
+  using (public.is_inogen() and user_id = auth.uid());
+create policy fetch_log_insert on public.fetch_log for insert to authenticated
+  with check (public.is_inogen() and user_id = auth.uid());
+
+create or replace function public.touch_updated_at() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end
+$$;
+create trigger profiles_touch before update on public.profiles
+  for each row execute function public.touch_updated_at();
+
+-- Ownership and role never change after insert.
+create or replace function public.documents_guard() returns trigger
+language plpgsql as $$
+begin
+  new.user_id := old.user_id;
+  new.role_id := old.role_id;
+  new.updated_at := now();
+  return new;
+end
+$$;
+create trigger documents_guard before update on public.documents
+  for each row execute function public.documents_guard();
