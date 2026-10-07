@@ -9,6 +9,11 @@ function streamResponse(chunks: Uint8Array[], init: ResponseInit = { status: 200
 }
 
 describe('SSEParser', () => {
+  it('ignores keep-alive comments', () => {
+    const p = new SSEParser()
+    const out = p.push(enc.encode(': ping\n\n' + sse(['delta', { text: 'a' }])))
+    expect(out.map((e) => e.event)).toEqual(['delta'])
+  })
   it('reassembles events and multibyte characters split across chunks', () => {
     const bytes = enc.encode(sse(['delta', { text: 'Tarief €100 — café' }], ['done', { documentId: 'd1' }]))
     const p = new SSEParser()

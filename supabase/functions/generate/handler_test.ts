@@ -127,6 +127,7 @@ Deno.test('logs the upstream error type and status, never its message', async ()
   const { store } = fakeStore()
   const entries: Record<string, unknown>[] = []
   const run: RunModel = () => ({
+    // oxlint-disable-next-line require-yield -- throws before its first value, by design
     events: (async function* () { throw Object.assign(new Error('secret prompt text'), { name: 'OverloadedError', status: 529 }) })(),
     final: () => Promise.reject(new Error('unused')),
   })

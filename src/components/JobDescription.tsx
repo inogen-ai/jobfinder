@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState, type MutableRefObject } from 'react'
 import type { Role } from '../lib/types'
 import { GenerateError, fetchErrorMessage, type GenerateClient } from '../lib/generate'
 
-export function JobDescription({ role, client, onSave }: {
+export function JobDescription({ role, client, onSave, flushRef }: {
   role: Role; client: GenerateClient; onSave: (text: string) => Promise<string | null>
+  /** Set to a function that saves unsaved text, so the panel can flush it before generating. */
+  flushRef?: MutableRefObject<(() => Promise<string | null>) | null>
 }) {
   const [text, setText] = useState(role.jobDescription)
   const [saved, setSaved] = useState(role.jobDescription)
@@ -17,6 +19,16 @@ export function JobDescription({ role, client, onSave }: {
     if (!err) setSaved(value)
     setMsg(err ?? 'Saved')
   }
+
+  useEffect(() => {
+    if (!flushRef) return
+    flushRef.current = async () => {
+      if (text === saved) return null
+      const err = await onSave(text)
+      if (!err) { setSaved(text); setMsg('Saved') }
+      return err
+    }
+  })
 
   async function fetchIt() {
     setBusy(true); setMsg('Fetching the posting…')

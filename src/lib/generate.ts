@@ -38,12 +38,13 @@ export class SSEParser {
       const raw = this.buffer.slice(0, end)
       this.buffer = this.buffer.slice(end + 2)
       let event = 'message'
+      let fields = 0
       const data: string[] = []
       for (const line of raw.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim()
-        else if (line.startsWith('data:')) data.push(line.slice(5).trimStart())
+        if (line.startsWith('event:')) { event = line.slice(6).trim(); fields++ }
+        else if (line.startsWith('data:')) { data.push(line.slice(5).trimStart()); fields++ }
       }
-      out.push({ event, data: data.join('\n') })
+      if (fields) out.push({ event, data: data.join('\n') }) // comment-only blocks are keep-alives
     }
     return out
   }
