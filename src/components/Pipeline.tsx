@@ -10,9 +10,10 @@ import { FilterBar } from './Filters'
 import { RoleRow } from './RoleRow'
 import { RoleEditor } from './RoleEditor'
 import { AddRoleDialog } from './AddRoleDialog'
+import { DocumentsPanel, type DocsContext } from './DocumentsPanel'
 
-export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp }: {
-  api: RolesApi; userEmail: string; onSignOut: () => void; onAuthError: () => void; now?: Date
+export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp, docs }: {
+  api: RolesApi; userEmail: string; onSignOut: () => void; onAuthError: () => void; now?: Date; docs?: DocsContext
 }) {
   // One clock per mount, so memoised sorting isn't recomputed on every render.
   const [now] = useState(() => nowProp ?? new Date())
@@ -24,6 +25,12 @@ export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp 
   const [openId, setOpenId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const [adding, setAdding] = useState(false)
+  const [docCounts, setDocCounts] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    if (!docs) return
+    docs.api.countByRole().then(setDocCounts).catch(() => {})
+  }, [docs])
 
   const fail = useCallback((e: unknown): string => {
     const err = toRoleError(e)
@@ -124,10 +131,14 @@ export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp 
   else if (!roles.length) body = <div className="empty"><b>No roles yet.</b>Use Add role to log the first one.</div>
   else if (!visible.length) body = <div className="empty"><b>Nothing matches these filters.</b>Try All markets or another stage.</div>
   else body = visible.map((r) => (
-    <RoleRow key={r.id} role={r} now={now} open={openId === r.id}
+    <RoleRow key={r.id} role={r} now={now} open={openId === r.id} docCount={docCounts[r.id]}
       onToggle={() => setOpenId((o) => (o === r.id ? null : r.id))}
       onStatus={(s) => void changeStatus(r.id, s)}>
-      <RoleEditor role={r} now={now} onSave={(p) => save(r.id, p)} onDelete={() => remove(r.id)} />
+      <>
+        <RoleEditor role={r} now={now} onSave={(p) => save(r.id, p)} onDelete={() => remove(r.id)} />
+        {docs && <DocumentsPanel role={r} ctx={docs} onSaveJobDescription={(text) => save(r.id, { jobDescription: text })}
+          onCountChange={(id, n) => setDocCounts((c) => ({ ...c, [id]: n }))} />}
+      </>
     </RoleRow>
   ))
 
@@ -140,7 +151,7 @@ export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp 
         </div>
         <div className="top-side">
           <div className="countdown"><b className="mono">{contractCountdown(now)}</b><span>days until the current<br />contract ends (31 Oct)</span></div>
-          <div className="userbar"><span className="muted">{userEmail}</span><button className="btn" onClick={onSignOut}>Sign out</button></div>
+          <div className="userbar"><span className="muted">{userEmail}</span>{docs && <button className="btn" onClick={docs.onOpenProfile}>My profile</button>}<button className="btn" onClick={onSignOut}>Sign out</button></div>
         </div>
       </header>
       <StageStrip counts={counts} value={filters.stage} onChange={(stage) => setFilters((f) => ({ ...f, stage }))} />

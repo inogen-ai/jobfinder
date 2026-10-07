@@ -1,14 +1,39 @@
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { createRolesApi } from './lib/roles'
+import { createProfileApi, isProfileReady } from './lib/profile'
+import { createDocumentsApi } from './lib/documents'
+import { createGenerateClient } from './lib/generate'
 import { useSession } from './hooks/useSession'
 import { SignIn } from './components/SignIn'
 import { Pipeline } from './components/Pipeline'
+import { ProfilePage } from './components/ProfilePage'
 
 const api = createRolesApi(supabase)
+const profileApi = createProfileApi(supabase)
+const docsApi = createDocumentsApi(supabase)
+const genClient = createGenerateClient({
+  functionsUrl: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`,
+  anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+  getToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? '',
+})
 
 export default function App() {
   const { status, session, signIn, signOut } = useSession(supabase.auth)
+  const [view, setView] = useState<'pipeline' | 'profile'>('pipeline')
+  const [profileReady, setProfileReady] = useState(false)
+
+  useEffect(() => {
+    if (status !== 'signedIn') return
+    profileApi.get().then((p) => setProfileReady(isProfileReady(p))).catch(() => setProfileReady(false))
+  }, [status])
+
+  const docs = useMemo(() => ({ api: docsApi, client: genClient, profileReady, onOpenProfile: () => setView('profile'), onAuthError: signOut }), [profileReady, signOut])
+
   if (status === 'loading') return <main className="wrap"><p className="notice">Loading…</p></main>
   if (status !== 'signedIn' || !session) return <SignIn refused={status === 'refused'} onSignIn={signIn} />
-  return <Pipeline api={api} userEmail={session.user.email ?? ''} onSignOut={signOut} onAuthError={signOut} />
+  if (view === 'profile') {
+    return <ProfilePage api={profileApi} onBack={() => setView('pipeline')} onSaved={(p) => setProfileReady(isProfileReady(p))} />
+  }
+  return <Pipeline api={api} docs={docs} userEmail={session.user.email ?? ''} onSignOut={signOut} onAuthError={signOut} />
 }

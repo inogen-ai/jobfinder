@@ -2,8 +2,8 @@ import type { ReactNode } from 'react'
 import { STATUSES, type Role, type Status } from '../lib/types'
 import { daysTo, deadlineTone, formatDay } from '../lib/pipeline'
 
-export function RoleRow({ role, open, now, onToggle, onStatus, children }: {
-  role: Role; open: boolean; now: Date; onToggle: () => void; onStatus: (s: Status) => void; children?: ReactNode
+export function RoleRow({ role, open, now, onToggle, onStatus, children, docCount }: {
+  role: Role; open: boolean; now: Date; onToggle: () => void; onStatus: (s: Status) => void; children?: ReactNode; docCount?: number
 }) {
   const tone = deadlineTone(role.deadline, now)
   const d = daysTo(role.deadline, now)
@@ -17,6 +17,7 @@ export function RoleRow({ role, open, now, onToggle, onStatus, children }: {
           <div className="role-t">{role.title}</div>
           <div className="role-o">
             {role.org}
+            {docCount ? <span className="docs-badge">{docCount} docs</span> : null}
             {role.nextStep && <> · <span className="next">Next: {role.nextStep}{role.nextDate ? ` (${formatDay(role.nextDate)})` : ''}</span></>}
           </div>
         </div>

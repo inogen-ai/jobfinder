@@ -102,4 +102,18 @@ describe('Pipeline', () => {
     expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'ML Engineer', org: 'Acme', status: 'Shortlist', market: 'UK' }))
     expect(await screen.findByText('ML Engineer')).toBeInTheDocument()
   })
+  it('shows each role\'s draft count and opens the profile', async () => {
+    const { api } = fakeApi([makeRole({ id: 'a', title: 'Role A' })])
+    const onOpenProfile = vi.fn()
+    const docs = {
+      api: { list: vi.fn(async () => []), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), countByRole: vi.fn(async () => ({ a: 2 })) },
+      client: { generate: vi.fn(), fetchPosting: vi.fn() },
+      profileReady: true,
+      onOpenProfile,
+    }
+    render(<Pipeline api={api} {...props} docs={docs} />)
+    expect(await screen.findByText('2 docs')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'My profile' }))
+    expect(onOpenProfile).toHaveBeenCalled()
+  })
 })
