@@ -26,7 +26,20 @@ const stamp = (d: Date) => new Intl.DateTimeFormat('en-GB', {
 
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Any failure before streaming starts still answers with JSON and CORS headers, so the browser can read it. */
 export async function handleGenerate(req: Request, deps: GenerateDeps): Promise<Response> {
+  try {
+    return await handle(req, deps)
+  } catch (e) {
+    const err = e as { name?: string; code?: string }
+    ;(deps.log ?? ((x: Record<string, unknown>) => console.log(JSON.stringify(x))))({ fn: 'generate', outcome: 'store_error', errorType: err?.name, errorCode: err?.code })
+    return json(req, 502, { code: 'upstream' })
+  }
+}
+
+async function handle(req: Request, deps: GenerateDeps): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) })
   if (req.method !== 'POST') return json(req, 405, { code: 'method_not_allowed' })
   const now = deps.now ?? (() => new Date())
@@ -45,6 +58,7 @@ export async function handleGenerate(req: Request, deps: GenerateDeps): Promise<
   const previousId = str(body.previousDocumentId) || null
   if (!roleId || !DOC_KINDS.includes(kind)) return json(req, 400, { code: 'bad_request', message: 'Choose a role and a document type.' })
   if (instruction.length > MAX_INSTRUCTION) return json(req, 400, { code: 'bad_request', message: 'Keep the instruction under 1,000 characters.' })
+  if (previousId && !UUID.test(previousId)) return json(req, 400, { code: 'bad_request', message: 'Unknown draft.' })
   if (questions.length > MAX_QUESTIONS) return json(req, 400, { code: 'bad_request', message: 'Keep the questions under 8,000 characters.' })
   if (kind === 'answers' && !questions) return json(req, 400, { code: 'bad_request', message: 'Paste the application questions first.' })
 

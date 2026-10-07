@@ -53,3 +53,9 @@ Deno.test('401 for outsiders, 502 when the model call throws', async () => {
   const res = await handleFetchPosting(post({ roleId: 'r1' }), { store: () => s, runFetch: () => Promise.reject(new Error('down')) })
   assertEquals(res.status, 502)
 })
+Deno.test('store failures return 502 with CORS headers', async () => {
+  const { s } = store({ getRole: async () => { throw new Error('db down') } })
+  const res = await handleFetchPosting(new Request('https://fn/fetch-posting', { method: 'POST', headers: { Authorization: 'Bearer jwt', Origin: 'https://jobfinder.inogen.ai' }, body: JSON.stringify({ roleId: 'r1' }) }), { store: () => s, runFetch: runFetch({ text: 'x' }) })
+  assertEquals(res.status, 502)
+  assertEquals(res.headers.get('Access-Control-Allow-Origin'), 'https://jobfinder.inogen.ai')
+})

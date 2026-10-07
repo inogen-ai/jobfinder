@@ -1,5 +1,5 @@
 begin;
-select plan(18);
+select plan(20);
 
 -- Hermetic: ignore whatever a local dev stack already holds (rolled back at the end).
 delete from public.roles;
@@ -40,6 +40,9 @@ select lives_ok($$insert into public.roles (id, title, org, market, fit, created
 select is((select updated_by from public.roles where id = 'm1'), 'Mike@InoGen.AI', 'audit ignores client-supplied updated_by');
 select is((select created_by from public.roles where id = 'm1'), 'Mike@InoGen.AI', 'audit ignores client-supplied created_by');
 select lives_ok($$update public.roles set notes = 'called' where id = 'm1'$$, 'inogen user updates');
+update public.roles set created_by = 'someone-else', created_at = '2000-01-01' where id = 'm1';
+select is((select created_by from public.roles where id = 'm1'), 'Mike@InoGen.AI', 'creator cannot be rewritten');
+select ok((select created_at from public.roles where id = 'm1') > now() - interval '1 minute', 'creation time cannot be rewritten');
 select is((select notes from public.roles where id = 'm1'), 'called', 'update applied');
 select lives_ok($$update public.roles set deleted_at = now() where id = 'm1'$$, 'inogen user soft-deletes');
 select throws_ok($$insert into public.roles (id, title, org, market, fit) values ('m2','T','O','Mars','Good')$$, '23514', null, 'market check constraint');

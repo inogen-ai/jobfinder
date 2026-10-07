@@ -10,3 +10,6 @@ Deno.test('a failed fetch, UNAVAILABLE, empty text or a refusal is unavailable',
   assertEquals(interpretFetch([], 'end_turn'), { unavailable: true })
   assertEquals(interpretFetch([{ type: 'text', text: 'x' }], 'refusal'), { unavailable: true })
 })
+Deno.test('text without a successful fetch is unavailable (the model must not answer from memory)', () => {
+  assertEquals(interpretFetch([{ type: 'text', text: 'A plausible posting' }], 'end_turn'), { unavailable: true })
+})

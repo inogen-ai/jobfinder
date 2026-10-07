@@ -12,6 +12,10 @@ export function fakeSb(result: { data: unknown; error: unknown }, opts: { userId
   const auth = {
     getSession: async () => ({ data: { session: opts.userId ? { user: { id: opts.userId } } : null } }),
   }
-  const client = { from: (t: string) => { calls.push(['from', [t]]); return builder }, auth } as unknown as SupabaseClient
+  const client = {
+    from: (t: string) => { calls.push(['from', [t]]); return builder },
+    rpc: (fn: string, args?: unknown) => { calls.push(['rpc', [fn, args]]); return builder },
+    auth,
+  } as unknown as SupabaseClient
   return { client, calls }
 }

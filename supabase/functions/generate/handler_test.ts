@@ -140,7 +140,7 @@ Deno.test('logs the upstream error type and status, never its message', async ()
 Deno.test('streams deltas, saves one document with token counts, and reports done', async () => {
   const { store, inserted } = fakeStore()
   const { run, prompts } = scripted([{ type: 'text', text: 'Dear ' }, { type: 'text', text: 'team' }])
-  const res = await handleGenerate(post({ ...ok, instruction: 'shorter', previousDocumentId: 'd0' }),
+  const res = await handleGenerate(post({ ...ok, instruction: 'shorter', previousDocumentId: '11111111-2222-3333-4444-555555555555' }),
     { store: () => store, runModel: run, now: () => new Date('2026-10-07T12:02:00Z'), ...quiet })
   assertEquals(res.headers.get('Content-Type'), 'text/event-stream')
   const ev = events(await res.text())
@@ -205,4 +205,16 @@ Deno.test('client disconnect aborts the model and saves nothing', async () => {
 Deno.test('OPTIONS answers CORS preflight', async () => {
   const res = await handleGenerate(new Request('https://fn/generate', { method: 'OPTIONS', headers: { Origin: 'http://localhost:5173' } }), { store: () => fakeStore().store, runModel: scripted([]).run, ...quiet })
   assertEquals(res.headers.get('Access-Control-Allow-Origin'), 'http://localhost:5173')
+})
+Deno.test('store failures before streaming return 502 with CORS headers', async () => {
+  const { store } = fakeStore({ getRole: async () => { throw new Error('db down') } })
+  const res = await handleGenerate(post(ok), { store: () => store, runModel: scripted([]).run, ...quiet })
+  assertEquals(res.status, 502)
+  assertEquals(res.headers.get('Access-Control-Allow-Origin'), 'https://jobfinder.inogen.ai')
+  assertEquals((await res.json()).code, 'upstream')
+})
+Deno.test('a malformed previousDocumentId is a 400', async () => {
+  const { store } = fakeStore()
+  const res = await handleGenerate(post({ ...ok, previousDocumentId: 'not-a-uuid' }), { store: () => store, runModel: scripted([]).run, ...quiet })
+  assertEquals(res.status, 400)
 })

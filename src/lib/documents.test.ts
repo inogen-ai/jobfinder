@@ -31,9 +31,10 @@ describe('documents', () => {
     expect(calls.map(([m]) => m)).not.toContain('delete')
     expect(calls.find(([m]) => m === 'update')?.[1][0]).toEqual({ deleted_at: expect.any(String) })
   })
-  it('countByRole tallies live drafts per role', async () => {
-    const { client } = fakeSb({ data: [{ role_id: 'r1' }, { role_id: 'r1' }, { role_id: 'r2' }], error: null })
+  it('countByRole uses the grouped database count (no row cap)', async () => {
+    const { client, calls } = fakeSb({ data: [{ role_id: 'r1', n: 2 }, { role_id: 'r2', n: 1 }], error: null })
     expect(await createDocumentsApi(client).countByRole()).toEqual({ r1: 2, r2: 1 })
+    expect(calls).toContainEqual(['rpc', ['document_counts', undefined]])
   })
   it('maps errors', async () => {
     const { client } = fakeSb({ data: null, error: { code: 'PGRST116', message: '0 rows' } })

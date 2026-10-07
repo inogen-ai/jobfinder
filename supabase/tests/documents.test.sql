@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(23);
 
 -- Hermetic setup (rolled back at the end). Deleting roles cascades to documents.
 delete from public.usage_log;
@@ -42,6 +42,16 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","email":"a@inogen.ai","role":"authenticated","app_metadata":{"provider":"azure"}}';
 reset role;
 select is((select user_id::text from public.documents limit 1), '00000000-0000-0000-0000-00000000000a', 'document owner cannot be reassigned');
+
+-- grouped counts for the badge: own live drafts only, grouped by role
+insert into public.roles (id, title, org, market, fit) values ('r2', 'T', 'O', 'NL', 'Good');
+reset role;
+insert into public.roles (id, title, org, market, fit) values ('r2', 'T', 'O', 'NL', 'Good') on conflict do nothing;
+set local role authenticated;
+insert into public.documents (role_id, kind, title, body, model) values ('r2', 'cv', 't', 'b', 'm'), ('r2', 'cv', 't', 'b', 'm');
+update public.documents set deleted_at = now() where role_id = 'r2' and title = 't' and id = (select id from public.documents where role_id = 'r2' limit 1);
+select is((select n from public.document_counts() where role_id = 'r2'), 1::bigint, 'counts exclude soft-deleted drafts');
+select is((select sum(n) from public.document_counts()), 3::numeric, 'counts cover all of the user''s live drafts');
 
 -- B: another inogen.ai user
 set local role authenticated;

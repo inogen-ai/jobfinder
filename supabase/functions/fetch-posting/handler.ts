@@ -14,6 +14,16 @@ export interface FetchDeps {
 }
 
 export async function handleFetchPosting(req: Request, deps: FetchDeps): Promise<Response> {
+  try {
+    return await handle(req, deps)
+  } catch (e) {
+    const err = e as { name?: string; code?: string }
+    ;(deps.log ?? ((x: Record<string, unknown>) => console.log(JSON.stringify(x))))({ fn: 'fetch-posting', outcome: 'store_error', errorType: err?.name, errorCode: err?.code })
+    return json(req, 502, { code: 'upstream' })
+  }
+}
+
+async function handle(req: Request, deps: FetchDeps): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) })
   if (req.method !== 'POST') return json(req, 405, { code: 'method_not_allowed' })
   const now = deps.now ?? (() => new Date())

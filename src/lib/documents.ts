@@ -58,10 +58,10 @@ export function createDocumentsApi(sb: SupabaseClient): DocumentsApi {
       if (error) throw toRoleError(error)
     },
     async countByRole() {
-      const { data, error } = await sb.from('documents').select('role_id').is('deleted_at', null)
+      const { data, error } = await sb.rpc('document_counts')
       if (error) throw toRoleError(error)
       const out: Record<string, number> = {}
-      for (const r of data as Array<{ role_id: string }>) out[r.role_id] = (out[r.role_id] ?? 0) + 1
+      for (const r of data as Array<{ role_id: string; n: number }>) out[r.role_id] = Number(r.n)
       return out
     },
   }
