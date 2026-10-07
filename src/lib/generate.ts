@@ -82,7 +82,7 @@ export function createGenerateClient(opts: {
           for (const ev of parser.push(value)) {
             const data = ev.data ? JSON.parse(ev.data) : {}
             if (ev.event === 'delta') { sawText = true; h.onDelta(data.text ?? '') }
-            else if (ev.event === 'reset') h.onReset()
+            else if (ev.event === 'reset') { sawText = false; h.onReset() }
             else if (ev.event === 'done') return data as GenerateResult
             else if (ev.event === 'error') throw new GenerateError(data.code ?? 'upstream')
           }

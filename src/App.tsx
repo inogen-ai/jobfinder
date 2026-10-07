@@ -27,9 +27,10 @@ export default function App() {
   const [profileReady, setProfileReady] = useState(false)
   const [signedOutMessage, setSignedOutMessage] = useState('')
 
-  const leave = useCallback(async () => { runs.stopAll(); setSignedOutMessage(''); await signOut() }, [signOut])
+  const leave = useCallback(async () => { runs.stopAll(); runs.clearAll(); setSignedOutMessage(''); await signOut() }, [signOut])
   const expire = useCallback(async () => {
     runs.stopAll()
+    runs.clearAll()
     setSignedOutMessage('Your session has ended. Sign in again.')
     await signOut()
   }, [signOut])

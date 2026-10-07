@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { JobDescription } from './JobDescription'
 import { makeRole } from '../test/factories'
@@ -39,6 +39,20 @@ describe('JobDescription', () => {
     rerender(<JobDescription role={makeRole({ jobDescription: 'v3' })} client={c} onSave={vi.fn()} />)
     expect(screen.getByLabelText('Job description')).toHaveValue('v2 from Herman + mine')
     expect(screen.getByText('A colleague updated this description. Saving will replace their version.')).toBeInTheDocument()
+  })
+  it('its own save echoing back is not reported as a colleague\'s change', async () => {
+    let release!: () => void
+    const onSave = vi.fn(() => new Promise<null>((r) => { release = () => r(null) }))
+    const c = client({ unavailable: true })
+    const { rerender } = render(<JobDescription role={makeRole({ jobDescription: '' })} client={c} onSave={onSave} />)
+    await userEvent.type(screen.getByLabelText('Job description'), 'Mine')
+    await userEvent.click(screen.getByRole('button', { name: 'Save description' }))
+    await userEvent.type(screen.getByLabelText('Job description'), ' more')
+    rerender(<JobDescription role={makeRole({ jobDescription: 'Mine' })} client={c} onSave={onSave} />)
+    expect(screen.queryByText(/A colleague updated this description/)).not.toBeInTheDocument()
+    await act(async () => release())
+    expect(screen.queryByText(/A colleague updated this description/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Job description')).toHaveValue('Mine more')
   })
   it('saves pasted text', async () => {
     const onSave = vi.fn(async () => null)

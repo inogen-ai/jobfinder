@@ -127,8 +127,10 @@ export function createRolesApi(sb: SupabaseClient): RolesApi {
       let channel: ReturnType<SupabaseClient['channel']>
       const connect = () => {
         const mine = ++generation
+        // A fresh topic per attempt: the client hands back an existing channel for a reused topic,
+        // and subscribe() on that errored channel would silently do nothing.
         channel = sb
-          .channel('roles-changes')
+          .channel(`roles-changes-${mine}`)
           .on('postgres_changes', { event: '*', schema: 'public', table: 'roles' }, (payload: {
             eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: unknown; old: unknown
           }) => {

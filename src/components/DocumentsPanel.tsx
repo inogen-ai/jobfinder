@@ -27,59 +27,77 @@ export function DocumentsPanel({ role, ctx, onSaveJobDescription, onCountChange 
   const [selected, setSelected] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const [loaded, setLoaded] = useState(false)
+  const [starting, setStarting] = useState(false)
   const flushJd = useRef<(() => Promise<string | null>) | null>(null)
   const countRef = useRef(onCountChange)
   useEffect(() => { countRef.current = onCountChange })
 
   const run = useSyncExternalStore(ctx.runs.subscribe, () => ctx.runs.get(role.id))
-  const busy = run?.busy ?? false
-  // A run is shown while it streams, or after it failed with text worth keeping.
-  const live = run && (run.busy || (run.outcome === 'failed' && run.text)) ? run : null
-  const runNotice = run?.outcome === 'failed' && run.error ? generateErrorMessage(run.error) : ''
+  const busy = starting || (run?.busy ?? false)
+  // Shown while streaming, while a finished draft's saved copy loads, and after a failure that left text.
+  const live = run && (run.busy || run.outcome === 'done' || (run.outcome === 'failed' && run.text)) ? run : null
+  const runNotice = run?.outcome === 'failed' && run.text && run.error ? generateErrorMessage(run.error) : ''
 
   useEffect(() => {
     let on = true
     ctx.api.list(role.id)
-      .then((d) => {
-        if (!on) return
-        setDocs(d); setSelected(d[0]?.id ?? null); setLoaded(true)
-        // A run that finished while the panel was closed is already in the list.
-        if (ctx.runs.get(role.id)?.outcome === 'done') ctx.runs.clear(role.id)
-      })
+      .then((d) => { if (on) { setDocs(d); setSelected(d[0]?.id ?? null); setLoaded(true) } })
       .catch(() => { if (on) setNotice("Couldn't load your drafts.") })
     return () => { on = false }
-  }, [ctx.api, ctx.runs, role.id])
+  }, [ctx.api, role.id])
 
   // The badge follows the list; every change below goes through a functional update, so no stale copies.
   useEffect(() => { if (loaded) countRef.current(role.id, docs.length) }, [loaded, docs.length, role.id])
 
+  // Whichever panel is mounted when a run finishes adds the saved draft, even if the run was started
+  // from an earlier, since-closed panel.
+  useEffect(() => {
+    if (!loaded || run?.outcome !== 'done' || !run.result) return
+    const { documentId, truncated, jdTruncated } = run.result
+    let on = true
+    void (async () => {
+      let saved: Doc | null = null
+      try {
+        saved = await ctx.api.get(documentId)
+      } catch {
+        try {
+          const fresh = await ctx.api.list(role.id)
+          if (on) setDocs(fresh)
+          saved = fresh.find((d) => d.id === documentId) ?? null
+        } catch { /* reported below */ }
+      }
+      if (!on) return // closed while loading: the next panel to open picks it up
+      const doc = saved
+      if (doc) {
+        setDocs((d) => (d.some((x) => x.id === doc.id) ? d : [doc, ...d]))
+        setSelected(doc.id)
+        setNotice(truncated ? 'This draft hit the length limit and may be cut off.' : jdTruncated ? 'The job description was shortened to fit.' : '')
+      } else {
+        setNotice('Draft saved. Reload the page to see it.')
+      }
+      ctx.runs.clear(role.id)
+    })()
+    return () => { on = false }
+  }, [run, loaded, ctx.api, ctx.runs, role.id])
+
   async function start(kind: DocKind, opts: { instruction?: string; questions?: string; previousDocumentId?: string | null }) {
+    setStarting(true) // lock the buttons from the click, before any save below
     const jdError = await flushJd.current?.()
-    if (jdError) { setNotice(jdError); return }
-    setNotice(''); setSelected(null)
-    let res
+    if (jdError) { setStarting(false); setNotice(jdError); return }
+    setNotice('')
+    const running = ctx.runs.start(role.id, { kind, ...opts })
+    setStarting(false) // the store now reports busy
     try {
-      res = await ctx.runs.start(role.id, { kind, ...opts })
+      await running
     } catch (e) {
       if (e instanceof GenerateError && e.code === 'unauthorized') ctx.onAuthError?.()
-      return // the run keeps its error and any partial text for display
+      const state = ctx.runs.get(role.id)
+      if (state?.outcome === 'failed' && !state.text && state.error) {
+        // Nothing worth keeping: show the reason once and forget the run.
+        setNotice(generateErrorMessage(state.error))
+        ctx.runs.clear(role.id)
+      }
     }
-    let saved: Doc | null = null
-    try {
-      saved = await ctx.api.get(res.documentId)
-    } catch {
-      try {
-        const fresh = await ctx.api.list(role.id)
-        setDocs(fresh)
-        saved = fresh.find((d) => d.id === res.documentId) ?? null
-      } catch { /* handled below */ }
-    }
-    ctx.runs.clear(role.id)
-    if (!saved) { setNotice('Draft saved. Reload the page to see it.'); return }
-    const doc = saved
-    setDocs((d) => (d.some((x) => x.id === doc.id) ? d : [doc, ...d]))
-    setSelected(doc.id)
-    setNotice(res.truncated ? 'This draft hit the length limit and may be cut off.' : res.jdTruncated ? 'The job description was shortened to fit.' : '')
   }
 
   async function saveLive(body: string): Promise<string | null> {
@@ -138,8 +156,10 @@ export function DocumentsPanel({ role, ctx, onSaveJobDescription, onCountChange 
         </ul>
       )}
       {live && (
-        <DraftEditor key={busy ? 'live' : 'live-done'} title={`${DOC_KIND_LABEL[live.kind]} · unsaved`} body={live.text} streaming={busy}
-          onStop={() => ctx.runs.stop(role.id)} onSave={busy ? undefined : saveLive} />
+        <DraftEditor key={live.busy ? 'live' : `live-${live.outcome}`}
+          title={`${DOC_KIND_LABEL[live.kind]} · ${live.busy ? 'writing…' : live.outcome === 'done' ? 'saved' : 'unsaved'}`}
+          body={live.text} streaming={live.busy}
+          onStop={() => ctx.runs.stop(role.id)} onSave={live.outcome === 'failed' ? saveLive : undefined} />
       )}
       {current && (
         <DraftEditor key={current.id} title={current.title} body={current.body} streaming={false}

@@ -11,10 +11,13 @@ export function JobDescription({ role, client, onSave, flushRef }: {
   const [saved, setSaved] = useState(role.jobDescription)
   const [incoming, setIncoming] = useState(role.jobDescription)
   const [conflict, setConflict] = useState(false)
+  const [inFlight, setInFlight] = useState<string | null>(null)
   // A colleague changed the description (live update): adopt it unless there are local edits.
+  // The echo of our own save in flight is not a colleague's change.
   if (role.jobDescription !== incoming) {
     setIncoming(role.jobDescription)
-    if (text === saved) { setText(role.jobDescription); setSaved(role.jobDescription) }
+    if (role.jobDescription === inFlight) setSaved(role.jobDescription)
+    else if (text === saved) { setText(role.jobDescription); setSaved(role.jobDescription) }
     else if (role.jobDescription !== text) setConflict(true)
   }
   const [preview, setPreview] = useState<string | null>(null)
@@ -23,7 +26,9 @@ export function JobDescription({ role, client, onSave, flushRef }: {
 
   async function save(value: string) {
     setMsg('Saving…')
+    setInFlight(value)
     const err = await onSave(value)
+    setInFlight(null)
     if (!err) { setSaved(value); setConflict(false) }
     setMsg(err ?? 'Saved')
   }

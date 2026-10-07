@@ -52,18 +52,22 @@ export class RunStore {
     this.controllers.set(roleId, controller)
     this.states.set(roleId, { kind: params.kind, text: '', busy: true, outcome: 'running', result: null, error: null })
     this.listeners.forEach((fn) => fn())
+    // A newer run for the same role replaces this one; from then on this run may not touch the state.
+    const current = () => this.controllers.get(roleId) === controller
     try {
       const result = await this.client.generate({ roleId, ...params }, {
         signal: controller.signal,
-        onDelta: (t) => this.patch(roleId, { text: (this.states.get(roleId)?.text ?? '') + t }),
-        onReset: () => this.patch(roleId, { text: '' }),
+        onDelta: (t) => { if (current()) this.patch(roleId, { text: (this.states.get(roleId)?.text ?? '') + t }) },
+        onReset: () => { if (current()) this.patch(roleId, { text: '' }) },
       })
-      this.patch(roleId, { busy: false, outcome: 'done', result })
-      this.doneListeners.forEach((fn) => fn(roleId))
+      if (current()) {
+        this.patch(roleId, { busy: false, outcome: 'done', result })
+        this.doneListeners.forEach((fn) => fn(roleId))
+      }
       return result
     } catch (e) {
       const error = e instanceof GenerateError ? e : new GenerateError('upstream')
-      this.patch(roleId, { busy: false, outcome: 'failed', error })
+      if (current()) this.patch(roleId, { busy: false, outcome: 'failed', error })
       throw error
     } finally {
       if (this.controllers.get(roleId) === controller) this.controllers.delete(roleId)
@@ -76,6 +80,12 @@ export class RunStore {
 
   stopAll(): void {
     for (const c of this.controllers.values()) c.abort()
+  }
+
+  /** Forget every run, e.g. on sign-out, so the next user never sees someone else's partial draft. */
+  clearAll(): void {
+    this.states.clear()
+    this.listeners.forEach((fn) => fn())
   }
 
   clear(roleId: string): void {

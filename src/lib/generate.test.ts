@@ -59,6 +59,10 @@ describe('generate', () => {
     const empty = async () => streamResponse([])
     await expect(client(empty as unknown as typeof fetch).generate({ roleId: 'r1', kind: 'cv' }, { onDelta: () => {}, onReset: () => {} })).rejects.toMatchObject({ code: 'network' })
   })
+  it('a drop after a reset with no new text is a network error, not "stopped"', async () => {
+    const cut = async () => streamResponse([enc.encode(sse(['delta', { text: 'declined' }], ['reset', {}]))])
+    await expect(client(cut as unknown as typeof fetch).generate({ roleId: 'r1', kind: 'cv' }, { onDelta: () => {}, onReset: () => {} })).rejects.toMatchObject({ code: 'network' })
+  })
   it('an abort is stopped', async () => {
     const ctrl = new AbortController(); ctrl.abort()
     const aborted = async () => { throw new DOMException('aborted', 'AbortError') }

@@ -85,6 +85,7 @@ describe('Pipeline', () => {
     await waitFor(() => expect(api.update).toHaveBeenCalledTimes(2))
     await act(async () => failFirst())
     expect(screen.getByLabelText('Status for Role A')).toHaveValue('Interviewing')
+    expect(screen.queryByText("Couldn't save. Check your connection and try again.")).not.toBeInTheDocument()
   })
   it('a status change on a role someone deleted removes the row', async () => {
     const { api } = fakeApi([makeRole({ id: 'a', title: 'Role A' })])

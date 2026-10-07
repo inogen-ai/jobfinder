@@ -97,6 +97,41 @@ describe('createRolesApi', () => {
     const { client } = fakeSb({ data: null, error: { code: 'PGRST116', message: '0 rows' } })
     await expect(createRolesApi(client).update('gone', { notes: 'x' })).rejects.toMatchObject({ kind: 'missing' })
   })
+  it('reconnects with a fresh channel even though the client reuses channels by topic', () => {
+    vi.useFakeTimers()
+    try {
+      // Mirrors realtime-js: channel(topic) returns the registered channel for that topic until it is
+      // removed, and subscribe() on an already-joined/errored channel does nothing.
+      const registry = new Map<string, { cb?: (s: string) => void; joined: boolean }>()
+      const callbacks: Array<(s: string) => void> = []
+      const client = {
+        channel: (topic: string) => {
+          if (!registry.has(topic)) registry.set(topic, { joined: false })
+          const entry = registry.get(topic)!
+          const ch: Record<string, unknown> = {}
+          ch.on = () => ch
+          ch.subscribe = (cb: (s: string) => void) => {
+            if (!entry.joined) { entry.joined = true; entry.cb = cb; callbacks.push(cb) }
+            return ch
+          }
+          ch.topic = topic
+          return ch
+        },
+        removeChannel: vi.fn(async (ch: { topic: string }) => { registry.delete(ch.topic) }),
+      } as unknown as SupabaseClient
+      const onStatus = vi.fn()
+      const unsub = createRolesApi(client).subscribe(vi.fn(), onStatus)
+      callbacks[0]('CHANNEL_ERROR')
+      vi.advanceTimersByTime(1000)
+      expect(callbacks.length).toBe(2) // a genuinely new subscription
+      callbacks[1]('SUBSCRIBED')
+      expect(onStatus).toHaveBeenLastCalledWith('live')
+      expect(registry.size).toBe(1) // the old channel was removed, the new one kept
+      unsub()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('reconnects with backoff after a channel error and ignores the old channel', () => {
     vi.useFakeTimers()
     try {

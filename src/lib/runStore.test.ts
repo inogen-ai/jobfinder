@@ -40,6 +40,32 @@ describe('RunStore', () => {
     expect((await run).code).toBe('stopped')
     expect(store.get('r1')).toMatchObject({ busy: false, outcome: 'failed', text: 'partial', error: { code: 'stopped' } })
   })
+  it('a superseded run cannot touch the newer run for the same role', async () => {
+    const handlers: GenerateHandlers[] = []
+    const rejecters: Array<() => void> = []
+    const store = new RunStore(client((_p, h) => new Promise((_, reject) => {
+      handlers.push(h)
+      rejecters.push(() => reject(new GenerateError('stopped')))
+    })))
+    const first = store.start('r1', { kind: 'cv' }).catch(() => {})
+    const second = store.start('r1', { kind: 'pitch' }).catch(() => {})
+    handlers[0].onDelta('old text')
+    rejecters[0]()
+    await first
+    expect(store.get('r1')).toMatchObject({ kind: 'pitch', busy: true, outcome: 'running', text: '' })
+    handlers[1].onDelta('new')
+    expect(store.get('r1')?.text).toBe('new')
+    rejecters[1]()
+    await second
+  })
+  it('clearAll forgets every run (sign-out)', async () => {
+    const store = new RunStore(client(async () => { throw new GenerateError('upstream') }))
+    await store.start('a', { kind: 'cv' }).catch(() => {})
+    await store.start('b', { kind: 'cv' }).catch(() => {})
+    store.clearAll()
+    expect(store.get('a')).toBeNull()
+    expect(store.get('b')).toBeNull()
+  })
   it('clear forgets a run; stopAll aborts every run', async () => {
     const aborted: string[] = []
     const store = new RunStore(client((p, h) => new Promise((_, reject) => {

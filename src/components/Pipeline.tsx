@@ -97,7 +97,8 @@ export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp,
       const err = toRoleError(e)
       if (err.kind === 'missing') setRoles((rs) => applyChange(rs, { type: 'delete', id }))
       else if (latest()) setRoles((rs) => rs.map((r) => (r.id === id ? { ...r, status: before.status } : r)))
-      setNotice(fail(err))
+      // A superseded change failing says nothing; the newer change decides what the user sees.
+      if (latest() || err.kind !== 'network' && err.kind !== 'other') setNotice(fail(err))
     }
   }
 
