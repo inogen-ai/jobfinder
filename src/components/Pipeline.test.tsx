@@ -60,6 +60,17 @@ describe('Pipeline', () => {
     await waitFor(() => expect(screen.queryByLabelText('Notes')).not.toBeInTheDocument())
   })
 
+  it('says so when you save a role someone else deleted', async () => {
+    const { api } = fakeApi([makeRole({ id: 'a', title: 'Role A' })])
+    vi.mocked(api.update).mockRejectedValueOnce(new RoleError('0 rows', 'missing'))
+    render(<Pipeline api={api} {...props} />)
+    await userEvent.click(await screen.findByText('Role A'))
+    await userEvent.type(screen.getByLabelText('Notes'), 'x')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('This role was deleted by someone else.')).toBeInTheDocument()
+    expect(screen.queryByText('Role A')).not.toBeInTheDocument()
+  })
+
   it('applies live upserts from colleagues', async () => {
     const { api, push } = fakeApi([])
     render(<Pipeline api={api} {...props} />)

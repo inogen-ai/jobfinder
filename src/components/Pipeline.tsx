@@ -86,7 +86,11 @@ export function Pipeline({ api, userEmail, onSignOut, onAuthError, now: nowProp 
       return null
     } catch (e) {
       const err = toRoleError(e)
-      if (err.kind === 'missing') setRoles((rs) => applyChange(rs, { type: 'delete', id }))
+      if (err.kind === 'missing') {
+        // Removing the role unmounts its editor, so the message has to live on the page.
+        setRoles((rs) => applyChange(rs, { type: 'delete', id }))
+        setNotice(errorMessage(err))
+      }
       return fail(err)
     }
   }

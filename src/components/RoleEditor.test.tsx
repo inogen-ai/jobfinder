@@ -32,6 +32,7 @@ describe('RoleEditor', () => {
   })
   it('shows the save error', async () => {
     render(<RoleEditor role={makeRole()} now={now} onSave={async () => 'This role was deleted by someone else.'} onDelete={vi.fn()} />)
+    await userEvent.type(screen.getByLabelText('Notes'), 'x')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByText('This role was deleted by someone else.')).toBeInTheDocument()
   })
@@ -42,6 +43,22 @@ describe('RoleEditor', () => {
     expect(onDelete).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Delete role' }))
     expect(onDelete).toHaveBeenCalled()
+  })
+  it('saves only the fields you changed, so a colleague\'s live edit to another field survives', async () => {
+    const onSave = vi.fn(async () => null)
+    const role = makeRole({ id: 'r1', notes: 'old' })
+    const { rerender } = render(<RoleEditor role={role} now={now} onSave={onSave} onDelete={vi.fn()} />)
+    rerender(<RoleEditor role={{ ...role, notes: 'colleague call notes' }} now={now} onSave={onSave} onDelete={vi.fn()} />)
+    await userEvent.type(screen.getByLabelText('Next step'), 'Call')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave).toHaveBeenCalledWith({ nextStep: 'Call' })
+  })
+  it('does not call save when nothing changed', async () => {
+    const onSave = vi.fn(async () => null)
+    render(<RoleEditor role={makeRole()} now={now} onSave={onSave} onDelete={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.getByText('No changes to save')).toBeInTheDocument()
   })
   it('shows who last updated it', () => {
     render(<RoleEditor role={makeRole({ updatedBy: 'herman.wigge@inogen.ai', updatedAt: new Date(now.getTime() - 2 * 3_600_000).toISOString() })} now={now} onSave={vi.fn()} onDelete={vi.fn()} />)

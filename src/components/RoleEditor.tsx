@@ -10,16 +10,31 @@ const draftFrom = (r: Role): Draft => ({
   nextStep: r.nextStep, nextDate: r.nextDate ?? '', rate: r.rate, deadline: r.deadline ?? '', cv: r.cv, fit: r.fit, notes: r.notes,
 })
 
+const toPatch = (d: Draft): RolePatch => ({
+  nextStep: d.nextStep.trim(), nextDate: d.nextDate || null, rate: d.rate.trim(),
+  deadline: d.deadline || null, cv: d.cv as CvVersion, fit: d.fit as Fit, notes: d.notes,
+})
+
+/** Only the fields this user changed, so concurrent edits to other fields are not overwritten. */
+function changedFields(draft: Draft, initial: Draft): RolePatch {
+  const now = toPatch(draft), before = toPatch(initial)
+  return Object.fromEntries(
+    Object.entries(now).filter(([k, v]) => v !== before[k as keyof RolePatch]),
+  ) as RolePatch
+}
+
 export function RoleEditor({ role, now, onSave, onDelete }: {
   role: Role; now: Date; onSave: (p: RolePatch) => Promise<string | null>; onDelete: () => Promise<string | null>
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFrom(role))
+  const [initial, setInitial] = useState<Draft>(() => draftFrom(role))
   const [msg, setMsg] = useState('')
   const [confirming, setConfirming] = useState(false)
 
   // Reset only when a different role is shown, so a colleague's live edit never wipes this draft.
   useEffect(() => {
     setDraft(draftFrom(role))
+    setInitial(draftFrom(role))
     setMsg('')
     setConfirming(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -30,11 +45,11 @@ export function RoleEditor({ role, now, onSave, onDelete }: {
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    const patch = changedFields(draft, initial)
+    if (Object.keys(patch).length === 0) { setMsg('No changes to save'); return }
     setMsg('Saving…')
-    const err = await onSave({
-      nextStep: draft.nextStep.trim(), nextDate: draft.nextDate || null, rate: draft.rate.trim(),
-      deadline: draft.deadline || null, cv: draft.cv as CvVersion, fit: draft.fit as Fit, notes: draft.notes,
-    })
+    const err = await onSave(patch)
+    if (!err) setInitial(draft)
     setMsg(err ?? 'Saved')
   }
 
